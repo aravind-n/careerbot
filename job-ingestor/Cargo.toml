@@ -4,4 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+async-trait = "0.1.88"
+futures = "0.3.31"
 shared = { path = "../shared" }
+tokio = { version = "1.45.1", features = ["full"] }
