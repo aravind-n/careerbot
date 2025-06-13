@@ -5,15 +5,104 @@
 # Container Scanning customization: https://docs.gitlab.com/ee/user/application_security/container_scanning/#customizing-the-container-scanning-settings
 # Note that environment variables can be set in several places
 # See https://docs.gitlab.com/ee/ci/variables/#cicd-variable-precedence
+
 stages:
-- test
-- secret-detection
+  - lint
+  - build
+  - test
+  - containerize
+  - secret-detection
+
 sast:
   stage: test
 include:
-- template: Security/SAST.gitlab-ci.yml
-- template: Security/Secret-Detection.gitlab-ci.yml
+  - template: Security/SAST.gitlab-ci.yml
+  - template: Security/Secret-Detection.gitlab-ci.yml
+
 variables:
-  SECRET_DETECTION_ENABLED: 'true'
+  SECRET_DETECTION_ENABLED: "true"
+  RUST_IMAGE: rust:1.87-slim
+  IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+
 secret_detection:
   stage: secret-detection
+
+format-check:
+  stage: lint
+  image: $RUST_IMAGE
+  script:
+    - rustup component add rustfmt
+    - cargo fmt --all -- --check
+
+clippy-check:
+  stage: lint
+  image: $RUST_IMAGE
+  script:
+    - rustup component add clippy
+    - cargo clippy --all-targets --all-features -- -D warnings
+
+build:
+  stage: build
+  image: $RUST_IMAGE
+  script:
+    - cargo build --workspace --release
+
+test:
+  stage: test
+  image: $RUST_IMAGE
+  script:
+    - cargo test --workspace
+
+containerize-api:
+  stage: containerize
+  image: docker:28
+  services:
+    - docker:dind
+  script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    - docker build \
+      --build-arg RUST_IMAGE=$RUST_IMAGE \
+      -f docker/api.Dockerfile \
+      -t $IMAGE_TAG-api .
+    - docker push $IMAGE_TAG-api
+  rules:
+    - if: "$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH"
+      changes:
+        - docker/api.Dockerfile
+        - api/**/*
+
+containerize-job-ingestor:
+  stage: containerize
+  image: docker:28
+  services:
+    - docker:dind
+  script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    - docker build \
+      --build-arg RUST_IMAGE=$RUST_IMAGE \
+      -f docker/job-ingestor.Dockerfile \
+      -t $IMAGE_TAG-job-ingestor .
+    - docker push $IMAGE_TAG-job-ingestor
+  rules:
+    - if: "$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH"
+      changes:
+        - docker/job-ingestor.Dockerfile
+        - job-ingestor/**/*
+
+containerize-notifier:
+  stage: containerize
+  image: docker:28
+  services:
+    - docker:dind
+  script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    - docker build \
+      --build-arg RUST_IMAGE=$RUST_IMAGE \
+      -f docker/notifier.Dockerfile \
+      -t $IMAGE_TAG-notifier .
+    - docker push $IMAGE_TAG-notifier
+  rules:
+    - if: "$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH"
+      changes:
+        - docker/notifier.Dockerfile
+        - notifier/**/*
