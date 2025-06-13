@@ -10,8 +10,8 @@ stages:
   - lint
   - build
   - test
-  - containerize
   - secret-detection
+  - containerize
 
 sast:
   stage: test
@@ -59,10 +59,11 @@ containerize-api:
   services:
     - docker:dind
   script:
-    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
-    - docker build \
-      --build-arg RUST_IMAGE=$RUST_IMAGE \
-      -f docker/api.Dockerfile \
+    - echo $CI_REGISTRY_PASSWORD | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+    - >
+      docker build
+      --build-arg RUST_IMAGE=$RUST_IMAGE
+      -f docker/api.Dockerfile
       -t $IMAGE_TAG-api .
     - docker push $IMAGE_TAG-api
   rules:
@@ -77,10 +78,11 @@ containerize-job-ingestor:
   services:
     - docker:dind
   script:
-    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
-    - docker build \
-      --build-arg RUST_IMAGE=$RUST_IMAGE \
-      -f docker/job-ingestor.Dockerfile \
+    - echo $CI_REGISTRY_PASSWORD | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+    - >
+      docker build
+      --build-arg RUST_IMAGE=$RUST_IMAGE
+      -f docker/job-ingestor.Dockerfile
       -t $IMAGE_TAG-job-ingestor .
     - docker push $IMAGE_TAG-job-ingestor
   rules:
@@ -95,10 +97,11 @@ containerize-notifier:
   services:
     - docker:dind
   script:
-    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
-    - docker build \
-      --build-arg RUST_IMAGE=$RUST_IMAGE \
-      -f docker/notifier.Dockerfile \
+    - echo $CI_REGISTRY_PASSWORD | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+    - >
+      docker build
+      --build-arg RUST_IMAGE=$RUST_IMAGE
+      -f docker/notifier.Dockerfile
       -t $IMAGE_TAG-notifier .
     - docker push $IMAGE_TAG-notifier
   rules:

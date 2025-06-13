@@ -1,6 +1,6 @@
 ARG RUST_IMAGE=rust:latest
 
-FROM ${RUST_IMAGE} as builder
+FROM ${RUST_IMAGE} AS builder
 WORKDIR /app
 COPY . .
 RUN cargo build --release -p notifier
