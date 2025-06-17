@@ -4,3 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+async-trait = "0.1.88"
+chrono = "0.4.41"
+derive_builder = { version = "0.20.2", features = ["clippy"] }
+sqlx = { version = "0.8.6", features = ["runtime-tokio", "postgres", "macros", "chrono", "migrate", "uuid"] }
+uuid = { version = "1.17.0", features = ["v4"] }
