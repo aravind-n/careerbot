@@ -1,10 +1,18 @@
+mod microsoft;
+
 use std::{
     collections::{HashMap, HashSet},
     error::Error,
     str::FromStr,
+    sync::Arc,
 };
 
 use async_trait::async_trait;
+use serde_json::Value;
+use shared::{db::JobStore, job::Job};
+use tracing::{info, warn};
+
+use crate::collector::microsoft::MicrosoftCollector;
 
 /// Trait that defines behaviors for all job collectors
 ///
@@ -13,8 +21,66 @@ use async_trait::async_trait;
 /// the ingestion engine
 #[async_trait]
 pub(crate) trait JobCollector: Send + Sync {
+    /// Fetches an API resonse from a careers site
+    ///
+    /// # Returns
+    /// A [`serde_json::Value`] json value
+    ///
+    /// # Errors
+    /// Returns any errors from the http request and any
+    /// errors with processing the response into a JSON
+    async fn fetch_api_response(&self) -> Result<Value, Box<dyn Error>>;
+
+    /// Processes an API response JSON into a vector of [`Job`] values
+    ///
+    /// # Arguments
+    /// * `api_response` - A `serde-json::Value` instance
+    ///
+    /// # Returns
+    /// A vector of [`Job`] values
+    ///
+    /// # Errors
+    /// Any errors in building a `Job` instance
+    fn process(&self, api_response: Value) -> Result<Vec<Job>, Box<dyn Error>>;
+
+    /// Writes `Job` objects to an external database
+    ///
+    /// # Arguments
+    /// * `jobs` - A vector of [`Job`] values
+    /// * `db_pool`- An `sqlx::PgPool` Postgres pool
+    ///
+    /// # Errors
+    /// Any errors with writing to databases
+    async fn write_to_db(
+        &self,
+        jobs: &[Job],
+        store: Arc<dyn JobStore>,
+    ) -> Result<(), Box<dyn Error>> {
+        for job in jobs {
+            if store.job_exists(job).await? {
+                warn!(job = %job, "Skipping insert. Job exists in DB");
+            }
+
+            store.insert_job(job).await?;
+            info!(job = %job, "Inserted job into db");
+        }
+
+        Ok(())
+    }
+
     /// Executes job collection logic
-    async fn collect(&self) -> Result<(), Box<dyn Error>>;
+    ///
+    /// # Arguments
+    /// * `store` - An Arc `shared::db::JobStore` object
+    ///
+    /// # Errors
+    /// Any errors that occur in any of the called functions
+    async fn collect(&self, store: Arc<dyn JobStore>) -> Result<(), Box<dyn Error>> {
+        let api_response = self.fetch_api_response().await?;
+        let jobs = self.process(api_response)?;
+        self.write_to_db(&jobs, store).await?;
+        Ok(())
+    }
 
     /// Returns the string identifier of a collector
     ///
@@ -41,10 +107,21 @@ pub(crate) enum Collector {
 type CollectorFactory = Box<dyn Fn() -> Box<dyn JobCollector + Send + Sync>>;
 
 impl Collector {
+    /// Returns a list of all Collector variants
+    ///
+    /// Useful for test cases
+    #[cfg(test)]
+    fn all_variants() -> &'static [Self] {
+        use Collector::*;
+
+        // Currently only returns Microsoft since the google collector
+        // hasn't been created yet
+        &[Microsoft]
+    }
+
     /// Returns a lowercase string representation of a collector
     ///
     /// Useful for logging
-    #[allow(dead_code)]
     pub fn as_str(&self) -> &'static str {
         match self {
             Collector::Microsoft => "microsoft",
@@ -62,17 +139,18 @@ impl Collector {
     ///
     /// # Errors
     /// Prints each failed key to stderr
-    pub fn load_collector_config(config: Vec<String>) -> Vec<Collector> {
+    pub fn load_collector_config(config: &[String]) -> Vec<Collector> {
         config
-            .into_iter()
+            .iter()
             .map(|s| s.to_lowercase())
             .fold(HashSet::new(), |mut collector_set, s| {
                 match s.parse::<Collector>() {
                     Ok(k) => {
                         collector_set.insert(k);
                     }
-                    Err(e) => eprintln!("{e}"),
+                    Err(e) => warn!(invalid_key = %s, error = %e, "Failed to parse collector key"),
                 }
+
                 collector_set
             })
             .into_iter()
@@ -84,13 +162,14 @@ impl Collector {
     /// # Returns
     /// A map of [`Collector`] values to the corresponding factory functions
     pub fn build_factory_map() -> HashMap<Collector, CollectorFactory> {
-        // Insert a mapping here
-        // Example:
-        // factory_map.insert(
-        //     Collector::Microsoft,
-        //     Box::new(|| Box::new(MicrosoftCollector::new())),
-        // );
-        HashMap::new()
+        let mut factory_map: HashMap<Collector, CollectorFactory> = HashMap::new();
+
+        factory_map.insert(
+            Collector::Microsoft,
+            Box::new(|| Box::new(MicrosoftCollector::new())),
+        );
+
+        factory_map
     }
 }
 
@@ -149,7 +228,7 @@ mod tests {
         let expected: HashSet<_> = vec![Collector::Microsoft, Collector::Google]
             .into_iter()
             .collect();
-        let actual = Collector::load_collector_config(config)
+        let actual = Collector::load_collector_config(&config)
             .into_iter()
             .collect();
 
@@ -159,38 +238,50 @@ mod tests {
     #[test]
     fn test_load_collector_config_invalid_values() {
         let invalid_config = vec![String::from("invalid")];
-        assert!(Collector::load_collector_config(invalid_config).is_empty())
+        assert!(Collector::load_collector_config(&invalid_config).is_empty())
     }
 
     #[test]
     fn test_load_collector_config_mixed_values() {
         let mixed_config = vec![String::from("microsoft"), String::from("invalid")];
         let expected = vec![Collector::Microsoft];
-        let actual = Collector::load_collector_config(mixed_config);
+        let actual = Collector::load_collector_config(&mixed_config);
         assert_eq!(expected, actual)
     }
 
     #[test]
     fn test_load_collector_config_empty() {
-        assert!(Collector::load_collector_config(Vec::new()).is_empty())
+        assert!(Collector::load_collector_config(&[]).is_empty())
     }
 
     #[test]
     fn test_load_collector_config_with_duplicates() {
         let duplicate_config = vec![String::from("microsoft"), String::from("microsoft")];
         let expected = vec![Collector::Microsoft];
-        assert_eq!(expected, Collector::load_collector_config(duplicate_config))
+        assert_eq!(
+            expected,
+            Collector::load_collector_config(&duplicate_config)
+        )
     }
 
     #[test]
     fn test_load_collector_config_case_insensitivity() {
-        let duplicate_config = vec![String::from("micRosOft")];
+        let case_insensitive_config = vec![String::from("micRosOft")];
         let expected = vec![Collector::Microsoft];
-        assert_eq!(expected, Collector::load_collector_config(duplicate_config))
+        assert_eq!(
+            expected,
+            Collector::load_collector_config(&case_insensitive_config)
+        )
     }
 
     #[test]
     fn test_build_factory_map() {
-        assert!(Collector::build_factory_map().is_empty())
+        let factory_map = Collector::build_factory_map();
+
+        assert!(
+            Collector::all_variants()
+                .iter()
+                .all(|key| factory_map.contains_key(key))
+        )
     }
 }
