@@ -3,6 +3,7 @@ ARG RUST_IMAGE=rust:latest
 FROM ${RUST_IMAGE} AS builder
 WORKDIR /app
 COPY . .
+ENV SQLX_OFFLINE=true
 RUN cargo build --release -p job-ingestor
 
 FROM debian:bookworm-slim
