@@ -2,7 +2,7 @@ use std::{error::Error, sync::Arc};
 
 use async_trait::async_trait;
 use serde_json::Value;
-use shared::{database::JobStore, job::Job, stream::StreamPublisher};
+use shared::{database::JobStore, job::Job, messaging::MessagePublisher};
 use tracing::{info, warn};
 
 /// Trait that defines behaviors for all job collectors
@@ -66,7 +66,7 @@ pub(crate) trait JobCollector: Send + Sync {
     async fn publish_jobs(
         &self,
         jobs: &[Job],
-        publisher: Arc<dyn StreamPublisher>,
+        publisher: Arc<dyn MessagePublisher>,
     ) -> Result<(), Box<dyn Error>> {
         for job in jobs {
             let json = serde_json::to_value(job)?;
@@ -87,7 +87,7 @@ pub(crate) trait JobCollector: Send + Sync {
     async fn collect(
         &self,
         store: Arc<dyn JobStore>,
-        publisher: Arc<dyn StreamPublisher>,
+        publisher: Arc<dyn MessagePublisher>,
     ) -> Result<(), Box<dyn Error>> {
         let api_response = self.fetch_api_response().await?;
         let jobs = self.process(api_response)?;

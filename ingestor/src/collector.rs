@@ -110,7 +110,7 @@ impl FromStr for Collector {
         match s {
             "microsoft" => Ok(Collector::Microsoft),
             "google" => Ok(Collector::Google),
-            _ => Err(format!("Invalid Collector Name: {}", s)),
+            _ => Err(format!("Invalid Collector Name: {s}")),
         }
     }
 }

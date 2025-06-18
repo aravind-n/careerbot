@@ -5,11 +5,10 @@ use std::error::Error;
 use std::sync::Arc;
 
 use futures::{StreamExt, stream::FuturesUnordered};
-use tokio::signal::unix::{SignalKind, signal};
 use tokio::time::{Duration, sleep};
 use tracing::{error, info};
 
-use crate::config::Config;
+use crate::config::IngestorConfig;
 
 /// Runs the main collector loop
 ///
@@ -21,7 +20,7 @@ use crate::config::Config;
 ///
 /// # Errors
 /// * Any runtime errors encountered by spawned processes
-async fn run_collector_loop(config: Config) -> Result<(), Box<dyn Error>> {
+async fn run_collector_loop(config: IngestorConfig) -> Result<(), Box<dyn Error>> {
     loop {
         let mut tasks = FuturesUnordered::new();
 
@@ -50,40 +49,23 @@ async fn run_collector_loop(config: Config) -> Result<(), Box<dyn Error>> {
     }
 }
 
-/// Interrupt handler for shutdown events
-///
-/// Currently handles SIGTERM and SIGINT events
-async fn shutdown_signal() {
-    let mut sigterm = signal(SignalKind::terminate()).unwrap();
-
-    tokio::select! {
-        _ = sigterm.recv() => {
-            info!("INFO: Received SIGTERM");
-        }
-        _ = tokio::signal::ctrl_c() => {
-            info!("INFO: Received SIGINT");
-        }
-    }
-}
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     dotenvy::dotenv().ok();
+    shared::log::init_tracing();
 
-    Config::init_tracing();
+    info!("Starting ingestor");
 
-    let config = Config::initialize()
+    let config = IngestorConfig::load_configuration()
         .await
         .inspect_err(|e| error!(error = %e, "Unable to initialize config"))?;
 
-    info!("job-ingestor started");
-
     tokio::select! {
         _ = run_collector_loop(config) => {
-            info!("INFO: Collector loop exited");
+            info!("Collector loop exited");
         }
-        _ = shutdown_signal() =>  {
-            info!("INFO: Shutdown signal received");
+        _ = shared::shutdown_signal() =>  {
+            info!("Stopping ingestor");
         }
     }
 

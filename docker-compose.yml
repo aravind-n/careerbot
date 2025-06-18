@@ -2,6 +2,11 @@ name: careerbot
 
 services:
   ingestor:
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     build:
       context: .
       dockerfile: ingestor/Dockerfile
@@ -10,11 +15,16 @@ services:
     environment:
       - RUST_LOG=${RUST_LOG}
       - DATABASE_URL=${DATABASE_URL}
-      - STREAM_URL=${STREAM_URL}
+      - MQUEUE_URL=${MQUEUE_URL}
       - STREAM_KEY_JOBS=${STREAM_KEY_JOBS}
     image: ${IMAGE_TAG_PREFIX}-ingestor
 
   notifier:
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     build:
       context: .
       dockerfile: notifier/Dockerfile
@@ -22,6 +32,8 @@ services:
         - RUST_IMAGE=${RUST_IMAGE}
     environment:
       - RUST_LOG=${RUST_LOG}
+      - MQUEUE_URL=${MQUEUE_URL}
+      - STREAM_KEY_JOBS=${STREAM_KEY_JOBS}
     image: ${IMAGE_TAG_PREFIX}-notifier
 
   api:
@@ -37,7 +49,6 @@ services:
 
   postgres:
     image: postgres:17
-    container_name: careerbot-postgres
     restart: always
     ports:
       - "5432:5432"
@@ -47,15 +58,24 @@ services:
       - POSTGRES_DB=${POSTGRES_DB}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "your_user"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
   
   redis:
     image: redis:8
-    container_name: redis
     ports:
       - "6379:6379"
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
 volumes:
   pgdata:

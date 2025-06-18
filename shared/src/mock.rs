@@ -6,7 +6,7 @@ use serde_json::Value;
 use crate::{
     database::JobStore,
     job::{Job, JobBuilder},
-    stream::StreamPublisher,
+    messaging::MessagePublisher,
 };
 
 #[derive(Debug)]
@@ -35,7 +35,7 @@ impl JobStore for MockJobStore {
 pub struct MockStreamPublisher;
 
 #[async_trait]
-impl StreamPublisher for MockStreamPublisher {
+impl MessagePublisher for MockStreamPublisher {
     async fn publish(&self, _message: Value) -> Result<(), Box<dyn Error>> {
         Ok(())
     }

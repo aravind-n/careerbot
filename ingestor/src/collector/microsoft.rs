@@ -84,7 +84,7 @@ impl JobCollector for MicrosoftCollector {
                 serde_json::from_value::<MicrosoftJobJson>(value.clone())
                     .map_err(|e| {
                         error!(error = %e, "Deserialize error");
-                        format!("Deserialize error: {}", e)
+                        format!("Deserialize error: {e}")
                     })?
                     .try_into()
             })

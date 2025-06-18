@@ -1,10 +1,12 @@
 pub mod postgres;
 
-use std::error::Error;
+use std::{error::Error, sync::Arc};
 
 use async_trait::async_trait;
 
 use crate::job::Job;
+use postgres::PostgresStore;
+use tracing::error;
 
 /// A trait representing a storage backend for job entries.
 ///
@@ -39,4 +41,23 @@ pub trait JobStore: Send + Sync {
     /// * `Result<bool, Box<dyn Error>>` - A result containing `true` if the job exists,
     ///   `false` otherwise, or an error if the check fails.
     async fn job_exists(&self, job: &Job) -> Result<bool, Box<dyn Error>>;
+}
+
+/// Initialize the database configuration
+/// TODO determine which type of store to create at runtime
+///
+/// # Returns
+/// An `Arc` `JobStore` value that handles db communications
+///
+/// # Errors
+/// * Missing DATABASE_URL environment variable
+/// * Any errors that occur when creating the db pool
+pub async fn init_db(endpoint: &str) -> Result<Arc<dyn JobStore>, Box<dyn Error>> {
+    let pool = PostgresStore::create_pool(endpoint)
+        .await
+        .inspect_err(|e| error!(error = %e, "Failed to create database pool"))?;
+
+    let store = Arc::new(PostgresStore::new(pool));
+
+    Ok(store)
 }
