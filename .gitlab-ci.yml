@@ -11,19 +11,10 @@ stages:
   - secret-detection
   - containerize
 
-sast:
-  stage: test
-include:
-  - template: Security/SAST.gitlab-ci.yml
-  - template: Security/Secret-Detection.gitlab-ci.yml
-
 variables:
   SECRET_DETECTION_ENABLED: "true"
   IMAGE_TAG_PREFIX: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
   DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:5432/${POSTGRES_DB}
-
-secret_detection:
-  stage: secret-detection
 
 format-check:
   stage: lint
@@ -31,15 +22,6 @@ format-check:
   script:
     - rustup component add rustfmt
     - cargo fmt --all -- --check
-
-clippy-check:
-  stage: lint
-  image: $RUST_IMAGE
-  variables:
-    SQLX_OFFLINE: "true"
-  script:
-    - rustup component add clippy
-    - cargo clippy --locked --all-targets --all-features -- -D warnings
 
 build:
   stage: build
@@ -49,6 +31,15 @@ build:
   script:
     - cargo build --locked --workspace --release
 
+clippy-check:
+  stage: test
+  image: $RUST_IMAGE
+  variables:
+    SQLX_OFFLINE: "true"
+  script:
+    - rustup component add clippy
+    - cargo clippy --locked --all-targets --all-features -- -D warnings
+
 test:
   stage: test
   image: $RUST_IMAGE
@@ -56,6 +47,15 @@ test:
     SQLX_OFFLINE: "true"
   script:
     - cargo test --locked --workspace
+
+sast:
+  stage: test
+include:
+  - template: Security/SAST.gitlab-ci.yml
+  - template: Security/Secret-Detection.gitlab-ci.yml
+
+secret_detection:
+  stage: secret-detection
 
 containerize-api:
   stage: containerize
