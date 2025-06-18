@@ -1,92 +1,16 @@
+mod job_collector;
 mod microsoft;
 
 use std::{
     collections::{HashMap, HashSet},
-    error::Error,
     str::FromStr,
-    sync::Arc,
 };
 
-use async_trait::async_trait;
-use serde_json::Value;
-use shared::{db::JobStore, job::Job};
-use tracing::{info, warn};
+use tracing::warn;
 
 use crate::collector::microsoft::MicrosoftCollector;
 
-/// Trait that defines behaviors for all job collectors
-///
-/// Each collector is responsible for fetching job postings
-/// from a source and providing a consistent interface to
-/// the ingestion engine
-#[async_trait]
-pub(crate) trait JobCollector: Send + Sync {
-    /// Fetches an API resonse from a careers site
-    ///
-    /// # Returns
-    /// A [`serde_json::Value`] json value
-    ///
-    /// # Errors
-    /// Returns any errors from the http request and any
-    /// errors with processing the response into a JSON
-    async fn fetch_api_response(&self) -> Result<Value, Box<dyn Error>>;
-
-    /// Processes an API response JSON into a vector of [`Job`] values
-    ///
-    /// # Arguments
-    /// * `api_response` - A `serde-json::Value` instance
-    ///
-    /// # Returns
-    /// A vector of [`Job`] values
-    ///
-    /// # Errors
-    /// Any errors in building a `Job` instance
-    fn process(&self, api_response: Value) -> Result<Vec<Job>, Box<dyn Error>>;
-
-    /// Writes `Job` objects to an external database
-    ///
-    /// # Arguments
-    /// * `jobs` - A vector of [`Job`] values
-    /// * `db_pool`- An `sqlx::PgPool` Postgres pool
-    ///
-    /// # Errors
-    /// Any errors with writing to databases
-    async fn write_to_db(
-        &self,
-        jobs: &[Job],
-        store: Arc<dyn JobStore>,
-    ) -> Result<(), Box<dyn Error>> {
-        for job in jobs {
-            if store.job_exists(job).await? {
-                warn!(job = %job, "Skipping insert. Job exists in DB");
-            }
-
-            store.insert_job(job).await?;
-            info!(job = %job, "Inserted job into db");
-        }
-
-        Ok(())
-    }
-
-    /// Executes job collection logic
-    ///
-    /// # Arguments
-    /// * `store` - An Arc `shared::db::JobStore` object
-    ///
-    /// # Errors
-    /// Any errors that occur in any of the called functions
-    async fn collect(&self, store: Arc<dyn JobStore>) -> Result<(), Box<dyn Error>> {
-        let api_response = self.fetch_api_response().await?;
-        let jobs = self.process(api_response)?;
-        self.write_to_db(&jobs, store).await?;
-        Ok(())
-    }
-
-    /// Returns the string identifier of a collector
-    ///
-    /// Used to get a name for logging purposes
-    fn name(&self) -> &'static str;
-}
+pub(crate) use crate::collector::job_collector::JobCollector;
 
 /// Strongly typed identifier for Collectors
 ///
@@ -104,7 +28,7 @@ pub(crate) enum Collector {
 /// Type alias for factory functions that return boxed [`JobCollector`]
 ///
 /// Allows dynamic instantiation of collectors at runtime
-type CollectorFactory = Box<dyn Fn() -> Box<dyn JobCollector + Send + Sync>>;
+pub(crate) type CollectorFactory = Box<dyn Fn() -> Box<dyn JobCollector + Send + Sync>>;
 
 impl Collector {
     /// Returns a list of all Collector variants
@@ -130,6 +54,7 @@ impl Collector {
     }
 
     /// Parses a list of collector names to [`Collector`] variants
+    /// TODO move this to config.rs
     ///
     /// # Arguments
     /// * `config` - A vector of collector keys as strings (Example: "microsoft", "google")
@@ -158,6 +83,7 @@ impl Collector {
     }
 
     /// Builds a map of all available Collector factory functions
+    /// TODO investigate moving this to config.rs
     ///
     /// # Returns
     /// A map of [`Collector`] values to the corresponding factory functions

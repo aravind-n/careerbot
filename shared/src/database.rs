@@ -1,34 +1,10 @@
+pub mod postgres;
+
 use std::error::Error;
-use std::time::Duration;
 
 use async_trait::async_trait;
-use sqlx::PgPool;
-use sqlx::postgres::PgPoolOptions;
 
 use crate::job::Job;
-
-/// Creates a PostgreSQL connection pool using the given database URL.
-///
-/// Configures the pool with a maximum of 10 connections and a connection
-/// acquisition timeout of 5 seconds.
-///
-/// # Arguments
-///
-/// * `database_url` - A string slice containing the database connection URL.
-///
-/// # Returns
-///
-/// * `Result<PgPool, sqlx::Error>` - A result containing the connection pool
-///   on success, or a `sqlx::Error` if the connection fails.
-pub async fn create_pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
-    let pool = PgPoolOptions::new()
-        .max_connections(10)
-        .acquire_timeout(Duration::from_secs(5))
-        .connect(database_url)
-        .await?;
-
-    Ok(pool)
-}
 
 /// A trait representing a storage backend for job entries.
 ///

@@ -2,6 +2,7 @@ use std::fmt::Display;
 
 use chrono::{DateTime, Utc};
 use derive_builder::Builder;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Represents a job listing with metadata collected from an external job portal.
@@ -9,12 +10,13 @@ use uuid::Uuid;
 /// This struct contains essential job information such as title, description,
 /// employment type, and source-specific identifiers. It is designed to be built
 /// using the `JobBuilder` and can be persisted via SQLx.
-#[derive(Debug, Default, Clone, Builder, sqlx::FromRow)]
+#[derive(Debug, Default, Clone, Builder, Serialize, Deserialize, PartialEq, Eq, sqlx::FromRow)]
 #[builder(setter(into, strip_option), default)]
 pub struct Job {
     /// Unique identifier for the job record in the local system.
     ///
     /// Automatically generated using UUID v4.
+    #[serde(default)]
     #[builder(default = Uuid::new_v4())]
     pub(crate) id: Uuid,
 
@@ -56,6 +58,7 @@ pub struct Job {
     /// Timestamp of when the job record was created in the system.
     ///
     /// Defaults to the current UTC time.
+    #[serde(default = "Utc::now")]
     #[builder(default = "Utc::now()")]
     pub(crate) created_at: DateTime<Utc>,
 }

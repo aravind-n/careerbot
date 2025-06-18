@@ -1,3 +1,6 @@
-pub mod db;
+pub mod database;
 pub mod job;
-pub mod postgres;
+pub mod stream;
+
+#[cfg(test)]
+pub mod mock;

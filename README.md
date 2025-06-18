@@ -34,6 +34,7 @@ docker compose up -d
 This will:
 - Build all three services (`ingestor`, `notifier`, `api`)
 - Start a Postgres database (`postgres:17`)
+- Start a Redis stream (`redis:8`)
 ---
 
 ## 🛠️ Local Development
