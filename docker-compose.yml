@@ -1,16 +1,16 @@
 name: careerbot
 
 services:
-  job-ingestor:
+  ingestor:
     build:
       context: .
-      dockerfile: job-ingestor/Dockerfile
+      dockerfile: ingestor/Dockerfile
       args:
         - RUST_IMAGE=${RUST_IMAGE}
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - RUST_LOG=${RUST_LOG}
-    image: ${IMAGE_TAG_PREFIX}-job-ingestor
+    image: ${IMAGE_TAG_PREFIX}-ingestor
 
   notifier:
     build:

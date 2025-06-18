@@ -4,7 +4,7 @@ FROM ${RUST_IMAGE} AS builder
 WORKDIR /app
 COPY . .
 ENV SQLX_OFFLINE=true
-RUN cargo build --release -p api
+RUN cargo build --locked --release -p api
 
 FROM debian:bookworm-slim
 RUN useradd -m appuser

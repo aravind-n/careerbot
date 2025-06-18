@@ -2,7 +2,7 @@
 
 CareerBot is a job notification engine written in Rust. It consists of three microservices:
 
-- `job-ingestor`: collects job listings
+- `ingestor`: collects job listings
 - `notifier`: notifies users of relevant jobs
 - `api`: provides a REST API interface
 
@@ -13,7 +13,7 @@ CareerBot is a job notification engine written in Rust. It consists of three mic
 1. **Clone the repo**
 
 ```bash
-git clone https://github.com/aravind/careerbot.git
+git clone https://gitlab.com/aravind/careerbot.git
 cd careerbot
 ```
 
@@ -32,10 +32,8 @@ docker compose up -d
 ```
 
 This will:
-- Build all three services (`job-ingestor`, `notifier`, `api`)
+- Build all three services (`ingestor`, `notifier`, `api`)
 - Start a Postgres database (`postgres:17`)
-- Run SQLx migrations automatically (if built into app startup)
-
 ---
 
 ## 🛠️ Local Development
@@ -44,7 +42,7 @@ You can also run services manually using Cargo:
 
 ```bash
 # Run a single service locally
-cargo run --bin job-ingestor
+cargo run --bin ingestor
 ```
 
 Make sure Postgres is running (you can use Docker Compose for that).
@@ -66,7 +64,7 @@ DATABASE_URL=postgres://... cargo sqlx migrate run
 If needed, you can build a single service:
 
 ```bash
-docker compose build job-ingestor
+docker compose build ingestor
 ```
 
 Or all services:
@@ -101,7 +99,7 @@ To prepare new queries (when they change), run:
 
 ```bash
 cd shared
-DATABASE_URL=postgres://... cargo sqlx prepare
+DATABASE_URL=postgres://... cargo sqlx prepare --workspace
 ```
 
 This updates the `.sqlx/` folder used by Docker builds.

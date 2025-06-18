@@ -39,7 +39,7 @@ clippy-check:
     SQLX_OFFLINE: "true"
   script:
     - rustup component add clippy
-    - cargo clippy --all-targets --all-features -- -D warnings
+    - cargo clippy --locked --all-targets --all-features -- -D warnings
 
 build:
   stage: build
@@ -47,7 +47,7 @@ build:
   variables:
     SQLX_OFFLINE: "true"
   script:
-    - cargo build --workspace --release
+    - cargo build --locked --workspace --release
 
 test:
   stage: test
@@ -55,7 +55,7 @@ test:
   variables:
     SQLX_OFFLINE: "true"
   script:
-    - cargo test --workspace
+    - cargo test --locked --workspace
 
 containerize-api:
   stage: containerize
@@ -71,19 +71,19 @@ containerize-api:
       changes:
         - api/**/*
 
-containerize-job-ingestor:
+containerize-ingestor:
   stage: containerize
   image: docker:28
   services:
     - docker:dind
   script:
     - echo $CI_REGISTRY_PASSWORD | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
-    - docker compose build job-ingestor
-    - docker push $IMAGE_TAG_PREFIX-job-ingestor
+    - docker compose build ingestor
+    - docker push $IMAGE_TAG_PREFIX-ingestor
   rules:
     - if: "$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH"
       changes:
-        - job-ingestor/**/*
+        - ingestor/**/*
 
 containerize-notifier:
   stage: containerize

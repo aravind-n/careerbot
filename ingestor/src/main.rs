@@ -1,5 +1,5 @@
 mod collector;
-mod ingestor_config;
+mod config;
 
 use std::env;
 use std::error::Error;
@@ -14,7 +14,7 @@ use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
 use crate::collector::Collector;
-use crate::ingestor_config::IngestorConfig;
+use crate::config::Config;
 
 /// Initializes `tracing_subscriber` configuration
 ///
@@ -59,7 +59,7 @@ async fn init_db() -> Result<Arc<dyn JobStore>, Box<dyn Error>> {
 /// Each enabled collector is run concurrently and the loop pauses for
 /// the delay duration
 async fn run_collector_loop() -> Result<(), Box<dyn Error>> {
-    let config = IngestorConfig::default();
+    let config = Config::default();
     let factory_map = Collector::build_factory_map();
     let store = init_db().await?;
 

@@ -3,7 +3,7 @@ ARG RUST_IMAGE=rust:latest
 FROM ${RUST_IMAGE} AS builder
 WORKDIR /app
 COPY . .
-RUN cargo build --release -p notifier
+RUN cargo build --locked --release -p notifier
 
 FROM debian:bookworm-slim
 RUN useradd -m appuser
