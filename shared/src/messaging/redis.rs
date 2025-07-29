@@ -1,7 +1,7 @@
 use std::error::Error;
 
 use async_trait::async_trait;
-use redis::{AsyncCommands, Client};
+use redis::{AsyncCommands, Client, aio::MultiplexedConnection};
 use serde_json::Value;
 use tracing::error;
 
@@ -43,16 +43,16 @@ impl MessagePublisher for RedisStreamPublisher {
 
 /// TODO add doc comments
 pub struct RedisStreamConsumer {
-    _client: Client,
-    _stream: String,
-    _group: String,
-    _consumer_name: String,
+    connection: MultiplexedConnection,
+    stream_key: String,
+    group: String,
+    consumer_name: String,
 }
 
 impl RedisStreamConsumer {
-    pub fn new(
+    pub async fn new(
         endpoint: &str,
-        stream: &str,
+        stream_key: &str,
         group: &str,
         consumer_name: &str,
     ) -> Result<Self, Box<dyn Error>> {
@@ -61,11 +61,36 @@ impl RedisStreamConsumer {
             e
         })?;
 
+        let mut connection = client
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(|e| {
+                error!(error = %e, "Error creating redis connection");
+                e
+            })?;
+
+        // Ensure group exists
+        redis::cmd("XGROUP")
+            .arg("CREATE")
+            .arg(stream_key)
+            .arg(group)
+            .arg("$")
+            .arg("MKSTREAM")
+            .query_async(&mut connection)
+            .await
+            .or_else(|e| {
+                if e.to_string().contains("BUSYGROUP") {
+                    Ok(())
+                } else {
+                    Err(e)
+                }
+            })?;
+
         Ok(Self {
-            _client: client,
-            _stream: stream.to_string(),
-            _group: group.to_string(),
-            _consumer_name: consumer_name.to_string(),
+            connection,
+            stream_key: stream_key.into(),
+            group: group.into(),
+            consumer_name: consumer_name.into(),
         })
     }
 }
@@ -73,6 +98,37 @@ impl RedisStreamConsumer {
 #[async_trait]
 impl MessageConsumer for RedisStreamConsumer {
     async fn next(&self) -> Result<Option<Value>, Box<dyn Error>> {
+        let mut conn = self.connection.clone();
+        let stream_key = &self.stream_key;
+        let group = &self.group;
+        let consumer_name = &self.consumer_name;
+
+        let result: Option<redis::streams::StreamReadReply> = redis::cmd("XREADGROUP")
+            .arg("GROUP")
+            .arg(group)
+            .arg(consumer_name)
+            .arg("COUNT")
+            .arg(1)
+            .arg("BLOCK")
+            .arg(5000)
+            .arg("STREAMS")
+            .arg(stream_key)
+            .arg(">")
+            .query_async(&mut conn)
+            .await?;
+
+        if let Some(reply) = result {
+            for stream in reply.keys {
+                for entry in stream.ids {
+                    if let Some(redis_value) = entry.map.get("data") {
+                        let str_value: String = redis::from_redis_value(redis_value)?;
+                        let json: Value = serde_json::from_str(&str_value)?;
+                        return Ok(Some(json));
+                    }
+                }
+            }
+        }
+
         Ok(None)
     }
 }

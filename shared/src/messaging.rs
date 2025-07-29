@@ -36,13 +36,15 @@ impl MessagingConfig {
         )?))
     }
 
-    pub fn init_consumer(
+    pub async fn init_consumer(
         endpoint: &str,
         stream_key: &str,
-    ) -> Result<Arc<dyn MessageConsumer>, Box<dyn Error>> {
+        group: &str,
+        consumer_name: &str,
+    ) -> Result<Box<dyn MessageConsumer>, Box<dyn Error>> {
         let stream_consumer =
-            redis::RedisStreamConsumer::new(endpoint, stream_key, "mygroup", "notifier_worker")?;
+            redis::RedisStreamConsumer::new(endpoint, stream_key, group, consumer_name).await?;
 
-        Ok(Arc::new(stream_consumer))
+        Ok(Box::new(stream_consumer))
     }
 }

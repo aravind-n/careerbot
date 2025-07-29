@@ -6,7 +6,7 @@ use tracing::error;
 use crate::channel::{NotificationChannel, email::EmailChannel};
 
 pub(crate) struct NotifierConfig {
-    message_consumer: Arc<dyn MessageConsumer>,
+    message_consumer: Box<dyn MessageConsumer>,
     pub(crate) channels: Vec<Arc<dyn NotificationChannel>>,
 }
 
@@ -23,8 +23,13 @@ impl NotifierConfig {
         let stream_key = env::var("STREAM_KEY_JOBS")
             .inspect_err(|e| error!(error = %e, "Missing STREAM_KEY_JOBS environment variable"))?;
 
-        let message_consumer: Arc<dyn MessageConsumer> =
-            MessagingConfig::init_consumer(&mqueue_endpoint, &stream_key)?;
+        let message_consumer: Box<dyn MessageConsumer> = MessagingConfig::init_consumer(
+            &mqueue_endpoint,
+            &stream_key,
+            "notifier-group",
+            "notifier-1",
+        )
+        .await?;
 
         let channels = Self::get_enabled_channels()?;
 
@@ -34,7 +39,7 @@ impl NotifierConfig {
         })
     }
 
-    pub fn message_consumer(&self) -> Arc<dyn MessageConsumer> {
-        Arc::clone(&self.message_consumer)
+    pub fn message_consumer(&self) -> &dyn MessageConsumer {
+        &*self.message_consumer
     }
 }
