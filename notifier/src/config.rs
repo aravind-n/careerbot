@@ -15,9 +15,15 @@ pub(crate) struct NotifierConfig {
 }
 
 impl NotifierConfig {
-    fn get_enabled_channels() -> Result<Vec<Arc<dyn NotificationChannel>>, Box<dyn Error>> {
+    fn get_enabled_channels(
+        email_api_key: String,
+        from_address: String,
+    ) -> Result<Vec<Arc<dyn NotificationChannel>>, Box<dyn Error>> {
         // TODO implement dynamic loading of channels
-        Ok(vec![Arc::new(EmailChannel)])
+        Ok(vec![Arc::new(EmailChannel::new(
+            email_api_key,
+            from_address,
+        ))])
     }
 
     pub(crate) async fn load_configuration() -> Result<Self, Box<dyn Error>> {
@@ -30,6 +36,12 @@ impl NotifierConfig {
         let stream_key = env::var("STREAM_KEY_JOBS")
             .inspect_err(|e| error!(error = %e, "Missing STREAM_KEY_JOBS environment variable"))?;
 
+        let email_api_key = env::var("EMAIL_API_KEY")
+            .inspect_err(|e| error!(error = %e, "Missing EMAIL_API_KEY environment variable"))?;
+
+        let from_address = env::var("FROM_EMAIL")
+            .inspect_err(|e| error!(error = %e, "Missing FROM_EMAIL environment variable"))?;
+
         let database = PostgresDatabaseFactory::init(&db_endpoint).await?;
 
         let message_consumer: Box<dyn MessageConsumer> = RedisStreamConsumerFactory::init(
@@ -40,7 +52,7 @@ impl NotifierConfig {
         )
         .await?;
 
-        let channels = Self::get_enabled_channels()?;
+        let channels = Self::get_enabled_channels(email_api_key, from_address)?;
 
         Ok(Self {
             database,

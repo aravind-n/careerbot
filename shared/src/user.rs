@@ -16,7 +16,7 @@ pub struct User {
     #[builder(default = Uuid::new_v4())]
     pub(crate) id: Uuid,
 
-    pub(crate) email: String,
+    pub email: String,
 
     #[serde(default = "Utc::now")]
     #[builder(default = "Utc::now()")]

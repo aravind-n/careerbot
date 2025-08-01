@@ -34,6 +34,8 @@ services:
       - RUST_LOG=${RUST_LOG}
       - MQUEUE_URL=${MQUEUE_URL}
       - STREAM_KEY_JOBS=${STREAM_KEY_JOBS}
+      - EMAIL_API_KEY=${EMAIL_API_KEY}
+      - FROM_EMAIL=${FROM_EMAIL}
     image: ${IMAGE_TAG_PREFIX}-notifier
 
   api:

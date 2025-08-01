@@ -24,7 +24,7 @@ pub struct Job {
     ///
     /// This is typically a short identifier like "MSFT" or "GOOG".
     /// TODO: Consider converting this to an enum for better type safety.
-    pub(crate) company_tag: String,
+    pub company_tag: String,
 
     /// Unique identifier of the job on the external job portal.
     ///

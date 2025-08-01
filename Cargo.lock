@@ -1090,6 +1090,7 @@ dependencies = [
  "dotenvy",
  "futures",
  "redis",
+ "reqwest",
  "serde_json",
  "shared",
  "tokio",
