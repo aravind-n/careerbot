@@ -15,36 +15,17 @@ pub trait MessageConsumer: Send + Sync {
     async fn next(&self) -> Result<Option<Value>, Box<dyn Error>>;
 }
 
-pub struct MessagingConfig;
+#[async_trait]
+pub trait MessagePublisherFactory: Send + Sync {
+    async fn init(endpoint: &str, key: &str) -> Result<Arc<dyn MessagePublisher>, Box<dyn Error>>;
+}
 
-impl MessagingConfig {
-    /// Initialize the message queue publisher configuration
-    ///
-    /// # Returns
-    /// An `Arc` `MessagePublisher` value that handles data stream publishing
-    ///
-    /// # Errors
-    /// * Missing MQUEUE_URL environment variable
-    /// * Missing JOB_STREAM_KEY environment variable
-    /// * Any errors that occur while opening a connection to the stream
-    pub fn init_publisher(
+#[async_trait]
+pub trait MessageConsumerFactory: Send + Sync {
+    async fn init(
         endpoint: &str,
-        stream_key: &str,
-    ) -> Result<Arc<dyn MessagePublisher>, Box<dyn Error>> {
-        Ok(Arc::new(redis::RedisStreamPublisher::new(
-            endpoint, stream_key,
-        )?))
-    }
-
-    pub async fn init_consumer(
-        endpoint: &str,
-        stream_key: &str,
+        key: &str,
         group: &str,
         consumer_name: &str,
-    ) -> Result<Box<dyn MessageConsumer>, Box<dyn Error>> {
-        let stream_consumer =
-            redis::RedisStreamConsumer::new(endpoint, stream_key, group, consumer_name).await?;
-
-        Ok(Box::new(stream_consumer))
-    }
+    ) -> Result<Box<dyn MessageConsumer>, Box<dyn Error>>;
 }

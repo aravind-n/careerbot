@@ -21,29 +21,29 @@ use crate::config::IngestorConfig;
 /// # Errors
 /// * Any runtime errors encountered by spawned processes
 async fn run_collector_loop(config: IngestorConfig) -> Result<(), Box<dyn Error>> {
+    let mut tasks = FuturesUnordered::new();
+
     loop {
-        let mut tasks = FuturesUnordered::new();
-
-        for item in config.collectors.iter() {
-            if let Some(factory) = config.factory_map.get(item) {
+        for collector_name in &config.collectors {
+            if let Some(factory) = config.factory_map.get(collector_name) {
                 let collector = factory();
-                let store = Arc::clone(&config.store);
-                let publisher = Arc::clone(&config.publisher);
+                let database = Arc::clone(&config.database);
+                let publisher = Arc::clone(&config.message_publisher);
 
-                tasks.push(async move {
+                tasks.push(tokio::spawn(async move {
                     info!(collector = %collector.name(), "Starting collector");
 
-                    match collector.collect(store, publisher).await {
+                    match collector.collect(database, publisher).await {
                         Ok(_) => info!(collector = %collector.name(), "Collector finished"),
                         Err(e) => {
                             error!(collector = %collector.name(), error = %e, "Collector failed")
                         }
                     }
-                });
+                }));
             }
         }
 
-        while tasks.next().await.is_some() {}
+        while (tasks.next().await).is_some() {}
 
         sleep(Duration::from_secs(config.delay_duration)).await;
     }

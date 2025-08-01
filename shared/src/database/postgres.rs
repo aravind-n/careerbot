@@ -1,21 +1,28 @@
-use std::error::Error;
 use std::time::Duration;
+use std::{error::Error, sync::Arc};
 
 use async_trait::async_trait;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
+use tracing::error;
 
-use crate::{database::JobStore, job::Job};
+use crate::{
+    database::{Database, DatabaseFactory},
+    job::Job,
+    user::User,
+};
 
-/// A PostgreSQL-backed implementation of the `JobStore` trait.
+/// A PostgreSQL-backed implementation of the `DataStore` trait.
 ///
-/// This store provides methods to insert job records and check for their
+/// This store provides methods to insert records and check for their
 /// existence in a PostgreSQL database using SQLx.
-pub struct PostgresStore {
+pub struct PostgresDatabase {
     pool: PgPool,
 }
 
-impl PostgresStore {
+pub struct PostgresDatabaseFactory;
+
+impl PostgresDatabase {
     /// Creates a new `PostgresStore` with the given PostgreSQL connection pool.
     ///
     /// # Arguments
@@ -25,7 +32,7 @@ impl PostgresStore {
     /// # Returns
     ///
     /// * `PostgresStore` instance tied to the given pool.
-    pub fn new(pool: PgPool) -> Self {
+    fn new(pool: PgPool) -> Self {
         Self { pool }
     }
 
@@ -42,7 +49,7 @@ impl PostgresStore {
     ///
     /// * `Result<PgPool, sqlx::Error>` - A result containing the connection pool
     ///   on success, or a `sqlx::Error` if the connection fails.
-    pub async fn create_pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
+    async fn create_pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
         let pool = PgPoolOptions::new()
             .max_connections(10)
             .acquire_timeout(Duration::from_secs(5))
@@ -54,7 +61,7 @@ impl PostgresStore {
 }
 
 #[async_trait]
-impl JobStore for PostgresStore {
+impl Database for PostgresDatabase {
     async fn insert_job(&self, job: &Job) -> Result<(), Box<dyn Error>> {
         sqlx::query!(
             r#"
@@ -89,20 +96,53 @@ impl JobStore for PostgresStore {
         Ok(())
     }
 
-    async fn job_exists(&self, job: &Job) -> Result<bool, Box<dyn Error>> {
-        let exists = sqlx::query_scalar!(
-            r#"
-            SELECT EXISTS (
-                SELECT 1 FROM jobs
-                WHERE job_portal_id = $1 AND company_tag = $2
-            )
-            "#,
-            &job.job_portal_id,
-            &job.company_tag,
-        )
-        .fetch_one(&self.pool)
-        .await?;
+    async fn get_interested_users_for_job(&self, job: &Job) -> Result<Vec<User>, Box<dyn Error>> {
+        let sql = r#"
+            SELECT users.* FROM users
+            JOIN subscriptions on users.id = subscriptions.user_id
+            WHERE subscriptions.company_tag LIKE $1
+              AND (
+                array_length(subscriptions.query_string, 1) IS NULL
+                OR EXISTS (
+                  SELECT 1
+                  FROM unnest(subscriptions.query_string) AS q
+                  WHERE $2 ILIKE '%' || q || '%'
+                )
+              )
+              AND (
+                array_length(subscriptions.exclude_string, 1) IS NULL
+                OR NOT EXISTS (
+                  SELECT 1
+                  FROM unnest(subscriptions.exclude_string) AS e
+                  WHERE $3 ILIKE '%' || e || '%'
+                )
+              )
+        "#;
 
-        Ok(exists.unwrap_or(false))
+        let result: Vec<User> = sqlx::query_as(sql)
+            .bind(format!("%{}%", job.company_tag))
+            .bind(job.title.to_lowercase())
+            .bind(job.title.to_lowercase())
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| {
+                error!(error = %e, "Failed to retrieve subscriptions");
+                e
+            })?;
+
+        Ok(result)
+    }
+}
+
+#[async_trait]
+impl DatabaseFactory for PostgresDatabaseFactory {
+    async fn init(endpoint: &str) -> Result<Arc<dyn Database>, Box<dyn Error>> {
+        let pool = PostgresDatabase::create_pool(endpoint)
+            .await
+            .inspect_err(|e| error!(error = %e, "Failed to create database pool"))?;
+
+        let store = Arc::new(PostgresDatabase::new(pool));
+
+        Ok(store)
     }
 }

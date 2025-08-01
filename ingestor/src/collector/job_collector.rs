@@ -2,8 +2,8 @@ use std::{error::Error, sync::Arc};
 
 use async_trait::async_trait;
 use serde_json::Value;
-use shared::{database::JobStore, job::Job, messaging::MessagePublisher};
-use tracing::{info, warn};
+use shared::{database::Database, job::Job, messaging::MessagePublisher};
+use tracing::{error, info, warn};
 
 /// Trait that defines behaviors for all job collectors
 ///
@@ -45,19 +45,23 @@ pub(crate) trait JobCollector: Send + Sync {
     async fn write_to_db(
         &self,
         jobs: &[Job],
-        store: Arc<dyn JobStore>,
+        database: Arc<dyn Database>,
     ) -> Result<Vec<Job>, Box<dyn Error>> {
         let mut inserted_jobs = Vec::new();
 
         for job in jobs {
-            if store.job_exists(job).await? {
-                warn!(job = %job, "Skipping insert. Job exists in DB");
-            } else {
-                store.insert_job(job).await?;
-                inserted_jobs.push(job.clone());
-
-                info!(job = %job, "Inserted job into db");
+            match database.insert_job(job).await {
+                Ok(_) => inserted_jobs.push(job.clone()),
+                Err(e) => {
+                    if e.to_string().contains("duplicate") {
+                        warn!(job = %job, "Skipping insert. Job exists in DB");
+                    } else {
+                        error!(error = %e, job = %job, "Unexpected error occured while inserting job");
+                    }
+                }
             }
+
+            info!(job = %job, "Inserted job into db");
         }
 
         Ok(inserted_jobs)
@@ -86,12 +90,12 @@ pub(crate) trait JobCollector: Send + Sync {
     /// Any errors that occur in any of the called functions
     async fn collect(
         &self,
-        store: Arc<dyn JobStore>,
+        database: Arc<dyn Database>,
         publisher: Arc<dyn MessagePublisher>,
     ) -> Result<(), Box<dyn Error>> {
         let api_response = self.fetch_api_response().await?;
         let jobs = self.process(api_response)?;
-        let inserted_jobs = self.write_to_db(&jobs, store).await?;
+        let inserted_jobs = self.write_to_db(&jobs, database).await?;
         self.publish_jobs(&inserted_jobs, publisher).await?;
 
         Ok(())

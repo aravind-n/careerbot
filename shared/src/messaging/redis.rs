@@ -1,11 +1,13 @@
-use std::error::Error;
+use std::{error::Error, sync::Arc};
 
 use async_trait::async_trait;
 use redis::{AsyncCommands, Client, aio::MultiplexedConnection};
 use serde_json::Value;
 use tracing::error;
 
-use crate::messaging::{MessageConsumer, MessagePublisher};
+use crate::messaging::{
+    MessageConsumer, MessageConsumerFactory, MessagePublisher, MessagePublisherFactory,
+};
 
 /// TODO add doc comments
 pub struct RedisStreamPublisher {
@@ -130,5 +132,30 @@ impl MessageConsumer for RedisStreamConsumer {
         }
 
         Ok(None)
+    }
+}
+
+pub struct RedisStreamPublisherFactory;
+
+#[async_trait]
+impl MessagePublisherFactory for RedisStreamPublisherFactory {
+    async fn init(endpoint: &str, key: &str) -> Result<Arc<dyn MessagePublisher>, Box<dyn Error>> {
+        Ok(Arc::new(RedisStreamPublisher::new(endpoint, key)?))
+    }
+}
+
+pub struct RedisStreamConsumerFactory;
+
+#[async_trait]
+impl MessageConsumerFactory for RedisStreamConsumerFactory {
+    async fn init(
+        endpoint: &str,
+        key: &str,
+        group: &str,
+        consumer_name: &str,
+    ) -> Result<Box<dyn MessageConsumer>, Box<dyn Error>> {
+        let stream_consumer = RedisStreamConsumer::new(endpoint, key, group, consumer_name).await?;
+
+        Ok(Box::new(stream_consumer))
     }
 }

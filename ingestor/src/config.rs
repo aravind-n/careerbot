@@ -1,8 +1,8 @@
 use std::{collections::HashMap, env, error::Error, sync::Arc};
 
 use shared::{
-    database::{self, JobStore},
-    messaging::{MessagePublisher, MessagingConfig},
+    database::{Database, DatabaseFactory, postgres::PostgresDatabaseFactory},
+    messaging::{MessagePublisher, MessagePublisherFactory, redis::RedisStreamPublisherFactory},
 };
 use tracing::error;
 
@@ -20,13 +20,13 @@ pub(crate) struct IngestorConfig {
     /// operations
     pub(crate) delay_duration: u64,
 
-    /// A `JobStore` instance that is used to write jobs
+    /// A `Database` instance that is used to write jobs
     /// to a database
-    pub(crate) store: Arc<dyn JobStore>,
+    pub(crate) database: Arc<dyn Database>,
 
     /// A `MessagePublisher` object that is used to
     /// publish jobs to a message queue
-    pub(crate) publisher: Arc<dyn MessagePublisher>,
+    pub(crate) message_publisher: Arc<dyn MessagePublisher>,
 
     /// A map of enabled `Collector` values to their associated
     /// factory functions. Used to build `JobCollector` values
@@ -80,8 +80,9 @@ impl IngestorConfig {
         Ok(Self {
             collectors: Self::get_enabled_collectors()?,
             delay_duration: 5 * 60,
-            store: database::init_db(&db_endpoint).await?,
-            publisher: MessagingConfig::init_publisher(&mqueue_endpoint, &stream_key)?,
+            database: PostgresDatabaseFactory::init(&db_endpoint).await?,
+            message_publisher: RedisStreamPublisherFactory::init(&mqueue_endpoint, &stream_key)
+                .await?,
             factory_map: Collector::build_factory_map(),
         })
     }

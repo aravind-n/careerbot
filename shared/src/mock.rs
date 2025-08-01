@@ -4,9 +4,10 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::{
-    database::JobStore,
+    database::Database,
     job::{Job, JobBuilder},
     messaging::MessagePublisher,
+    user::User,
 };
 
 #[derive(Debug)]
@@ -22,13 +23,13 @@ impl MockJobStore {
 }
 
 #[async_trait]
-impl JobStore for MockJobStore {
+impl Database for MockJobStore {
     async fn insert_job(&self, _job: &Job) -> Result<(), Box<dyn Error>> {
         Ok(())
     }
 
-    async fn job_exists(&self, job: &Job) -> Result<bool, Box<dyn Error>> {
-        Ok(job.eq(&self.existing_job()))
+    async fn get_interested_users_for_job(&self, _job: &Job) -> Result<Vec<User>, Box<dyn Error>> {
+        Ok(Vec::new())
     }
 }
 
