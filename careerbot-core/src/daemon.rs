@@ -83,6 +83,7 @@ pub async fn run(runtime: Arc<Runtime>) -> Result<(), DaemonError> {
     ensure_socket_unoccupied(&socket_path).await?;
 
     let listener = UnixListener::bind(&socket_path)?;
+    restrict_socket_permissions(&socket_path)?;
     info!(socket = %socket_path.display(), "daemon listening");
 
     let shutdown = Arc::new(Notify::new());
@@ -123,6 +124,24 @@ pub async fn run(runtime: Arc<Runtime>) -> Result<(), DaemonError> {
 
     info!("daemon stopped");
     Ok(serve_result?)
+}
+
+/// Restrict the IPC socket to the owner only.  `$XDG_RUNTIME_DIR` is
+/// already `0700` on Linux, but the macOS state-dir fallback path has
+/// no such protection from the platform — so set the permissions
+/// explicitly instead of relying on the umask.
+fn restrict_socket_permissions(socket_path: &std::path::Path) -> Result<(), DaemonError> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let perms = std::fs::Permissions::from_mode(0o600);
+        std::fs::set_permissions(socket_path, perms)?;
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = socket_path;
+    }
+    Ok(())
 }
 
 async fn ensure_socket_unoccupied(socket_path: &std::path::Path) -> Result<(), DaemonError> {
@@ -209,6 +228,7 @@ mod tests {
         ensure_socket_unoccupied(&socket_path).await?;
 
         let listener = UnixListener::bind(&socket_path)?;
+        restrict_socket_permissions(&socket_path)?;
         let shutdown = Arc::new(Notify::new());
         let channel = Arc::new(OsChannel::new());
         let scheduler = Scheduler::new(runtime.clone(), channel);
@@ -299,6 +319,20 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(status, 202);
+        let _ = tokio::time::timeout(Duration::from_secs(2), handle).await;
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn socket_file_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = TempDir::new().unwrap();
+        let (socket, handle) = spawn_daemon(&dir).await;
+
+        let mode = std::fs::metadata(&socket).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "socket file should be 0600");
+
+        let _ = ipc_client::request(&socket, "POST", "/shutdown", &[]).await;
         let _ = tokio::time::timeout(Duration::from_secs(2), handle).await;
     }
 
