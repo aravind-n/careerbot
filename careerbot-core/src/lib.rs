@@ -1,6 +1,7 @@
 pub mod agent;
 pub mod commands;
 pub mod config;
+pub mod daemon;
 pub mod db;
 pub mod log;
 pub mod paths;

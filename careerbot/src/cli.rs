@@ -2,11 +2,14 @@ use careerbot_core::commands::add_company as add_company_cmd;
 use careerbot_core::commands::profile as profile_cmd;
 use careerbot_core::commands::CommandError;
 use careerbot_core::config::{self, Config};
+use careerbot_core::daemon;
+use careerbot_core::daemon::ipc_client;
 use careerbot_core::paths::Paths;
 use careerbot_core::runtime::Runtime;
 use clap::{CommandFactory, Parser, Subcommand};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::Arc;
 
 #[derive(Parser)]
 #[command(
@@ -111,6 +114,9 @@ pub async fn run(cli: Cli) -> ExitCode {
         } => handle_config(key, value, list, edit, unset),
         Command::Profile { edit, from_resume } => handle_profile(edit, from_resume).await,
         Command::AddCompany { name, url } => handle_add_company(name, url).await,
+        Command::StartService => handle_start_service().await,
+        Command::StopService => handle_stop_service().await,
+        Command::Status => handle_status().await,
         _ => {
             println!("not implemented yet");
             ExitCode::SUCCESS
@@ -302,6 +308,66 @@ async fn handle_add_company(name: String, url: Option<String>) -> ExitCode {
         );
         eprintln!("(script was saved; inspect or remove via `careerbot remove-company {name}`)");
         ExitCode::FAILURE
+    }
+}
+
+async fn handle_start_service() -> ExitCode {
+    let rt = match Runtime::open().await {
+        Ok(r) => Arc::new(r),
+        Err(e) => return die(format_args!("{e}")),
+    };
+    match daemon::run(rt).await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => die(format_args!("{e}")),
+    }
+}
+
+async fn handle_stop_service() -> ExitCode {
+    let paths = match Paths::from_env() {
+        Ok(p) => p,
+        Err(e) => return die(format_args!("{e}")),
+    };
+    let socket = paths.socket_path();
+    match ipc_client::is_running(&socket).await {
+        Ok(false) => {
+            eprintln!("daemon is not running");
+            ExitCode::SUCCESS
+        }
+        Ok(true) => match ipc_client::request(&socket, "POST", "/shutdown", &[]).await {
+            Ok((202, _)) => {
+                println!("daemon shutting down");
+                ExitCode::SUCCESS
+            }
+            Ok((status, body)) => die(format_args!(
+                "unexpected response from daemon: {} {}",
+                status, body
+            )),
+            Err(e) => die(format_args!("{e}")),
+        },
+        Err(e) => die(format_args!("{e}")),
+    }
+}
+
+async fn handle_status() -> ExitCode {
+    let paths = match Paths::from_env() {
+        Ok(p) => p,
+        Err(e) => return die(format_args!("{e}")),
+    };
+    let socket = paths.socket_path();
+    match ipc_client::is_running(&socket).await {
+        Ok(false) => {
+            println!("not running");
+            ExitCode::SUCCESS
+        }
+        Ok(true) => match ipc_client::request(&socket, "GET", "/status", &[]).await {
+            Ok((200, body)) => {
+                println!("{body}");
+                ExitCode::SUCCESS
+            }
+            Ok((status, body)) => die(format_args!("unexpected status: {} {}", status, body)),
+            Err(e) => die(format_args!("{e}")),
+        },
+        Err(e) => die(format_args!("{e}")),
     }
 }
 

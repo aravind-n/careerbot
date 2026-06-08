@@ -57,6 +57,21 @@ impl Paths {
     pub fn scripts_dir(&self) -> PathBuf {
         self.data.join("scripts")
     }
+
+    /// IPC socket location. Linux prefers `$XDG_RUNTIME_DIR` when set
+    /// (tmpfs, cleaned up on logout); other platforms land in the
+    /// state directory, which we already manage.
+    pub fn socket_path(&self) -> PathBuf {
+        #[cfg(target_os = "linux")]
+        {
+            if let Some(runtime) = std::env::var_os("XDG_RUNTIME_DIR")
+                && !runtime.is_empty()
+            {
+                return PathBuf::from(runtime).join("careerbot.sock");
+            }
+        }
+        self.state.join("careerbot.sock")
+    }
 }
 
 fn nonempty_var(name: &str) -> Option<OsString> {
