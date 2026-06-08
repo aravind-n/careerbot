@@ -1,3 +1,4 @@
+use careerbot_core::commands::add_company as add_company_cmd;
 use careerbot_core::commands::profile as profile_cmd;
 use careerbot_core::commands::CommandError;
 use careerbot_core::config::{self, Config};
@@ -109,6 +110,7 @@ pub async fn run(cli: Cli) -> ExitCode {
             unset,
         } => handle_config(key, value, list, edit, unset),
         Command::Profile { edit, from_resume } => handle_profile(edit, from_resume).await,
+        Command::AddCompany { name, url } => handle_add_company(name, url).await,
         _ => {
             println!("not implemented yet");
             ExitCode::SUCCESS
@@ -266,6 +268,40 @@ async fn run_profile_from_resume(rt: &Runtime, path: &Path) -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(e) => die(format_args!("{e}")),
+    }
+}
+
+async fn handle_add_company(name: String, url: Option<String>) -> ExitCode {
+    let rt = match Runtime::open().await {
+        Ok(r) => r,
+        Err(e) => return die(format_args!("{e}")),
+    };
+    let output = match add_company_cmd::add_company(&rt, &name, url.as_deref()).await {
+        Ok(o) => o,
+        Err(e) => return die(format_args!("{e}")),
+    };
+
+    println!("{}", output.text);
+    if let Some(cost) = output.cost {
+        eprintln!(
+            "tokens: input={} output={} (tool calls: {})",
+            cost.input_tokens, cost.output_tokens, output.tool_calls
+        );
+    }
+    if output.verified {
+        eprintln!(
+            "verified: {} initial job{} on first run",
+            output.initial_jobs,
+            if output.initial_jobs == 1 { "" } else { "s" }
+        );
+        ExitCode::SUCCESS
+    } else {
+        eprintln!(
+            "verification failed: {}",
+            output.verification_error.as_deref().unwrap_or("unknown")
+        );
+        eprintln!("(script was saved; inspect or remove via `careerbot remove-company {name}`)");
+        ExitCode::FAILURE
     }
 }
 

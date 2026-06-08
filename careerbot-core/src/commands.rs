@@ -7,6 +7,7 @@
 //! IO concerns like printing or spawning `$EDITOR` stay in the CLI
 //! handler; this module just composes the runtime + agent layer.
 
+pub mod add_company;
 pub mod profile;
 
 use crate::agent::AgentError;
