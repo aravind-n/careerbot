@@ -308,8 +308,9 @@ impl CoreTools {
 
 /// Reject company names that aren't safe filename identifiers — keeps
 /// `save_script`/`run_script` from writing or executing files outside
-/// `scripts/`.
-fn validate_company(company: &str) -> Result<(), ToolError> {
+/// `scripts/`. Public so CLI command handlers can reject bad input
+/// before paying for an agent invocation.
+pub fn validate_company(company: &str) -> Result<(), ToolError> {
     if company.is_empty()
         || !company
             .chars()

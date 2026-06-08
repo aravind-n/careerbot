@@ -6,6 +6,7 @@
 //! drivers share.
 
 pub mod anthropic_api;
+pub mod prompts;
 
 use crate::tools::{CoreTools, ToolError};
 use async_trait::async_trait;
