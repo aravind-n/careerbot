@@ -1,7 +1,10 @@
+pub mod agent;
 pub mod config;
 pub mod db;
 pub mod log;
 pub mod paths;
+pub mod tools;
+pub mod types;
 
 use tracing::info;
 
