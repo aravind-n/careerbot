@@ -12,7 +12,28 @@ use sqlx::SqlitePool;
 use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::process::Command;
+use tokio::time::timeout;
+
+/// Default HTTP timeout used by [`CoreTools::fetch_url`] and shared by
+/// other in-process drivers that build a [`default_http_client`].
+pub const DEFAULT_HTTP_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Default wall-time cap on a single per-company script run.  Matches the
+/// save-time verification limit in PLAN.md §7.
+pub const DEFAULT_SCRIPT_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Build the canonical reqwest client with the default timeout applied.
+/// Falls back to `reqwest::Client::new()` if the builder fails (e.g.
+/// missing platform certs); the daemon will surface the per-call error
+/// from there.
+pub fn default_http_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .timeout(DEFAULT_HTTP_TIMEOUT)
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new())
+}
 
 #[derive(Debug)]
 pub enum ToolError {
@@ -22,6 +43,8 @@ pub enum ToolError {
     Json(serde_json::Error),
     Script { stderr: String, exit_code: i32 },
     InvalidNdjson(String),
+    InvalidCompany(String),
+    ScriptTimeout(Duration),
 }
 
 impl std::fmt::Display for ToolError {
@@ -35,6 +58,8 @@ impl std::fmt::Display for ToolError {
                 write!(f, "script exited {}: {}", exit_code, stderr)
             }
             Self::InvalidNdjson(s) => write!(f, "invalid NDJSON: {}", s),
+            Self::InvalidCompany(s) => write!(f, "invalid company name {:?}", s),
+            Self::ScriptTimeout(d) => write!(f, "script timed out after {:?}", d),
         }
     }
 }
@@ -72,6 +97,7 @@ pub struct CoreTools {
     /// Argv prefix used by `run_script` — typically `["uv", "run"]`.
     /// Tests override to `["python3"]` so they don't depend on `uv`.
     script_runner: Vec<String>,
+    script_timeout: Duration,
 }
 
 impl CoreTools {
@@ -84,11 +110,13 @@ impl CoreTools {
         paths: Paths,
         script_runner: Vec<String>,
     ) -> Self {
+        assert!(!script_runner.is_empty(), "script_runner must be non-empty");
         Self {
             db,
             paths,
-            http: reqwest::Client::new(),
+            http: default_http_client(),
             script_runner,
+            script_timeout: DEFAULT_SCRIPT_TIMEOUT,
         }
     }
 
@@ -122,6 +150,7 @@ impl CoreTools {
 
     /// Write `code` to `scripts/<company>.py`, creating the directory if needed.
     pub async fn save_script(&self, company: &str, code: &str) -> Result<(), ToolError> {
+        validate_company(company)?;
         let dir = self.paths.scripts_dir();
         std::fs::create_dir_all(&dir)?;
         std::fs::write(dir.join(format!("{}.py", company)), code)?;
@@ -130,21 +159,27 @@ impl CoreTools {
 
     /// Spawn the per-company script via the configured runner and parse
     /// its stdout as NDJSON. Empty stdout is legal (means: no matches).
-    /// Non-zero exit becomes `ToolError::Script`.
+    /// Non-zero exit becomes `ToolError::Script`; wall-time over
+    /// `script_timeout` becomes `ToolError::ScriptTimeout` (the child
+    /// receives SIGKILL when the future is dropped).
     pub async fn run_script(&self, company: &str) -> Result<Vec<RawJob>, ToolError> {
+        validate_company(company)?;
         let path = self.paths.scripts_dir().join(format!("{}.py", company));
-        let (program, args) = self
-            .script_runner
-            .split_first()
-            .ok_or_else(|| ToolError::InvalidNdjson("empty script_runner".into()))?;
+        let (program, args) = self.script_runner.split_first().expect(
+            "script_runner is enforced non-empty in CoreTools::with_script_runner",
+        );
 
-        let output = Command::new(program)
+        let fut = Command::new(program)
             .args(args)
             .arg(&path)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .output()
-            .await?;
+            .output();
+
+        let output = match timeout(self.script_timeout, fut).await {
+            Ok(r) => r?,
+            Err(_) => return Err(ToolError::ScriptTimeout(self.script_timeout)),
+        };
 
         if !output.status.success() {
             return Err(ToolError::Script {
@@ -269,6 +304,20 @@ impl CoreTools {
         .await?;
         Ok(())
     }
+}
+
+/// Reject company names that aren't safe filename identifiers — keeps
+/// `save_script`/`run_script` from writing or executing files outside
+/// `scripts/`.
+fn validate_company(company: &str) -> Result<(), ToolError> {
+    if company.is_empty()
+        || !company
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
+        return Err(ToolError::InvalidCompany(company.to_string()));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -441,6 +490,34 @@ print(json.dumps({"external_id": "2", "title": "PM", "url": "https://y", "locati
         }
         let jobs = tools.list_known_jobs("microsoft", 3).await.unwrap();
         assert_eq!(jobs.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn save_script_rejects_unsafe_company_names() {
+        let (_dir, tools) = setup().await;
+        for bad in ["", "..", "../etc", "with/slash", "with space", "../../x"] {
+            let err = tools.save_script(bad, "print()").await.unwrap_err();
+            assert!(
+                matches!(err, ToolError::InvalidCompany(_)),
+                "expected InvalidCompany for {bad:?}, got {err:?}"
+            );
+        }
+        // Sanity: a safe name still works.
+        tools.save_script("micro-soft_42", "print()").await.unwrap();
+    }
+
+    #[test]
+    fn validate_company_accepts_safe_names() {
+        assert!(validate_company("microsoft").is_ok());
+        assert!(validate_company("micro_soft").is_ok());
+        assert!(validate_company("micro-soft-42").is_ok());
+    }
+
+    #[test]
+    fn validate_company_rejects_bad_names() {
+        for bad in ["", ".", "..", "../etc", "with/slash", "with space"] {
+            assert!(validate_company(bad).is_err(), "{bad:?} should be invalid");
+        }
     }
 
     #[tokio::test]

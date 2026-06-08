@@ -11,6 +11,7 @@
 use super::{
     AgentDriver, AgentError, AgentResult, Budget, Capabilities, Cost, ToolCallSummary, ToolKit,
 };
+use crate::tools::default_http_client;
 use crate::types::{Filters, TokenUsage};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -31,7 +32,7 @@ pub struct AnthropicApiDriver {
 impl AnthropicApiDriver {
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: default_http_client(),
             api_key: api_key.into(),
             model: DEFAULT_MODEL.to_string(),
             base_url: DEFAULT_BASE_URL.to_string(),
