@@ -12,14 +12,16 @@ surfaces matches through OS-native notifications.
 ## Status
 
 Active rewrite. The CLI surface from the plan is wired up — `careerbot
---help` lists every subcommand — but most handlers still print "not
-implemented yet" while the scheduler and notification surface land
-incrementally. The deterministic foundation (XDG-compliant config and
-SQLite schema) and the agent loop (CoreTools tool layer and the
-Anthropic `/v1/messages` driver) are both in place; no CLI command
-invokes the agent yet. End-to-end so far: `careerbot config` reads and
-writes `config.toml`. The prior multi-tenant SaaS implementation lives
-on the `legacy-saas` tag.
+--help` lists every subcommand — and the first two agent-driven
+commands are now real: `careerbot profile --from-resume <path>` ingests
+a resume into `profile.md`, and `careerbot add-company <name> [url]`
+generates a per-company Python collector and runs save-time
+verification on it. Both go through the Anthropic `/v1/messages`
+driver, which needs `agent.driver = anthropic_api` and an API key set
+via `careerbot config`. The daemon scheduler, notification surface,
+MCP server, and Claude Code driver are still pending; the affected
+subcommands print "not implemented yet". The prior multi-tenant SaaS
+implementation lives on the `legacy-saas` tag.
 
 ## Layout
 

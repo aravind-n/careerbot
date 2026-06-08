@@ -1,5 +1,9 @@
+use careerbot_core::commands::add_company as add_company_cmd;
+use careerbot_core::commands::profile as profile_cmd;
+use careerbot_core::commands::CommandError;
 use careerbot_core::config::{self, Config};
 use careerbot_core::paths::Paths;
+use careerbot_core::runtime::Runtime;
 use clap::{CommandFactory, Parser, Subcommand};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -96,7 +100,7 @@ pub enum Command {
     McpServer,
 }
 
-pub fn run(cli: Cli) -> ExitCode {
+pub async fn run(cli: Cli) -> ExitCode {
     match cli.command {
         Command::Config {
             key,
@@ -105,6 +109,8 @@ pub fn run(cli: Cli) -> ExitCode {
             edit,
             unset,
         } => handle_config(key, value, list, edit, unset),
+        Command::Profile { edit, from_resume } => handle_profile(edit, from_resume).await,
+        Command::AddCompany { name, url } => handle_add_company(name, url).await,
         _ => {
             println!("not implemented yet");
             ExitCode::SUCCESS
@@ -223,4 +229,95 @@ fn config_edit(path: &Path) -> ExitCode {
 fn die(args: std::fmt::Arguments<'_>) -> ExitCode {
     eprintln!("error: {args}");
     ExitCode::FAILURE
+}
+
+async fn handle_profile(edit: bool, from_resume: Option<PathBuf>) -> ExitCode {
+    let rt = match Runtime::open().await {
+        Ok(r) => r,
+        Err(e) => return die(format_args!("{e}")),
+    };
+
+    if let Some(path) = from_resume {
+        return run_profile_from_resume(&rt, &path).await;
+    }
+    if edit {
+        return run_profile_edit(&rt);
+    }
+    match profile_cmd::show(&rt).await {
+        Ok(content) => {
+            print!("{content}");
+            ExitCode::SUCCESS
+        }
+        Err(CommandError::NotFound { .. }) => die(format_args!(
+            "no profile yet — run `careerbot profile --from-resume <path>` to create one"
+        )),
+        Err(e) => die(format_args!("{e}")),
+    }
+}
+
+async fn run_profile_from_resume(rt: &Runtime, path: &Path) -> ExitCode {
+    match profile_cmd::from_resume(rt, path).await {
+        Ok(output) => {
+            println!("{}", output.text);
+            if let Some(cost) = output.cost {
+                eprintln!(
+                    "tokens: input={} output={} (tool calls: {})",
+                    cost.input_tokens, cost.output_tokens, output.tool_calls
+                );
+            }
+            ExitCode::SUCCESS
+        }
+        Err(e) => die(format_args!("{e}")),
+    }
+}
+
+async fn handle_add_company(name: String, url: Option<String>) -> ExitCode {
+    let rt = match Runtime::open().await {
+        Ok(r) => r,
+        Err(e) => return die(format_args!("{e}")),
+    };
+    let output = match add_company_cmd::add_company(&rt, &name, url.as_deref()).await {
+        Ok(o) => o,
+        Err(e) => return die(format_args!("{e}")),
+    };
+
+    println!("{}", output.text);
+    if let Some(cost) = output.cost {
+        eprintln!(
+            "tokens: input={} output={} (tool calls: {})",
+            cost.input_tokens, cost.output_tokens, output.tool_calls
+        );
+    }
+    if output.verified {
+        eprintln!(
+            "verified: {} initial job{} on first run",
+            output.initial_jobs,
+            if output.initial_jobs == 1 { "" } else { "s" }
+        );
+        ExitCode::SUCCESS
+    } else {
+        eprintln!(
+            "verification failed: {}",
+            output.verification_error.as_deref().unwrap_or("unknown")
+        );
+        eprintln!("(script was saved; inspect or remove via `careerbot remove-company {name}`)");
+        ExitCode::FAILURE
+    }
+}
+
+fn run_profile_edit(rt: &Runtime) -> ExitCode {
+    let path = profile_cmd::profile_path(rt);
+    if !path.exists() {
+        return die(format_args!(
+            "no profile yet — run `careerbot profile --from-resume <path>` to create one"
+        ));
+    }
+    let editor = std::env::var("VISUAL")
+        .or_else(|_| std::env::var("EDITOR"))
+        .unwrap_or_else(|_| "vi".to_string());
+    match std::process::Command::new(&editor).arg(&path).status() {
+        Ok(s) if s.success() => ExitCode::SUCCESS,
+        Ok(s) => die(format_args!("{editor} exited with status {s}")),
+        Err(e) => die(format_args!("failed to spawn {editor}: {e}")),
+    }
 }
