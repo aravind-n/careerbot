@@ -11,10 +11,13 @@ surfaces matches through OS-native notifications.
 
 ## Status
 
-Active rewrite. The binary currently builds but exposes no subcommands; the
-agent harness, scheduler, and notification surface are being landed
-incrementally. The prior multi-tenant SaaS implementation lives on the
-`legacy-saas` tag.
+Active rewrite. The CLI surface from the plan is wired up — `careerbot
+--help` lists every subcommand — but most handlers still print "not
+implemented yet" while the agent harness, scheduler, and notification
+surface land incrementally. End-to-end so far: `careerbot config` reads
+and writes `config.toml` (under the XDG-compliant data directory) and
+the SQLite schema is created on first daemon start. The prior
+multi-tenant SaaS implementation lives on the `legacy-saas` tag.
 
 ## Layout
 
