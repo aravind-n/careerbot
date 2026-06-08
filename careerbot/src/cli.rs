@@ -1,9 +1,11 @@
 use careerbot_core::commands::add_company as add_company_cmd;
 use careerbot_core::commands::profile as profile_cmd;
+use careerbot_core::commands::remove_company as remove_company_cmd;
 use careerbot_core::commands::CommandError;
 use careerbot_core::config::{self, Config};
 use careerbot_core::daemon;
 use careerbot_core::daemon::ipc_client;
+use careerbot_core::daemon::scheduler;
 use careerbot_core::paths::Paths;
 use careerbot_core::runtime::Runtime;
 use clap::{CommandFactory, Parser, Subcommand};
@@ -118,6 +120,8 @@ pub async fn run(cli: Cli) -> ExitCode {
         Command::StopService => handle_stop_service().await,
         Command::Status => handle_status().await,
         Command::RunNow { company } => handle_run_now(company).await,
+        Command::ListCompanies => handle_list_companies().await,
+        Command::RemoveCompany { name } => handle_remove_company(name).await,
         _ => {
             println!("not implemented yet");
             ExitCode::SUCCESS
@@ -345,6 +349,44 @@ async fn handle_stop_service() -> ExitCode {
             )),
             Err(e) => die(format_args!("{e}")),
         },
+        Err(e) => die(format_args!("{e}")),
+    }
+}
+
+async fn handle_list_companies() -> ExitCode {
+    let rt = match Runtime::open().await {
+        Ok(r) => r,
+        Err(e) => return die(format_args!("{e}")),
+    };
+    let names = match scheduler::discover_companies(&rt) {
+        Ok(n) => n,
+        Err(e) => return die(format_args!("{e}")),
+    };
+    if names.is_empty() {
+        eprintln!("(no companies — add one with `careerbot add-company <name> [url]`)");
+    } else {
+        for name in names {
+            println!("{name}");
+        }
+    }
+    ExitCode::SUCCESS
+}
+
+async fn handle_remove_company(name: String) -> ExitCode {
+    let rt = match Runtime::open().await {
+        Ok(r) => r,
+        Err(e) => return die(format_args!("{e}")),
+    };
+    match remove_company_cmd::remove(&rt, &name).await {
+        Ok(out) => {
+            if out.script_removed {
+                println!("removed scripts/{name}.py");
+            } else {
+                println!("no script for {name}");
+            }
+            eprintln!("deleted {} job row(s)", out.jobs_removed);
+            ExitCode::SUCCESS
+        }
         Err(e) => die(format_args!("{e}")),
     }
 }

@@ -288,23 +288,25 @@ impl CoreTools {
 
     /// Persist a batch of jobs returned by `run_script`. Existing rows
     /// (matched by `(company_tag, external_id)`) are silently skipped
-    /// thanks to the table's UNIQUE constraint; the return value counts
-    /// only the genuinely new rows.
+    /// thanks to the table's UNIQUE constraint. Returns the `(id, job)`
+    /// pairs for genuinely new rows in input order, which the
+    /// scheduler then feeds to the notification dispatcher.
     pub async fn insert_jobs(
         &self,
         company: &str,
         jobs: &[RawJob],
-    ) -> Result<usize, ToolError> {
-        let mut new_count = 0;
+    ) -> Result<Vec<(i64, RawJob)>, ToolError> {
+        let mut new_jobs = Vec::new();
         for job in jobs {
             let location_json = job
                 .location
                 .as_ref()
                 .map(|locs| serde_json::to_string(locs).unwrap_or_default());
-            let result = sqlx::query(
+            let row: Option<(i64,)> = sqlx::query_as(
                 "INSERT OR IGNORE INTO jobs \
                  (company_tag, external_id, title, url, location, posted_at, description) \
-                 VALUES (?, ?, ?, ?, ?, ?, ?)",
+                 VALUES (?, ?, ?, ?, ?, ?, ?) \
+                 RETURNING id",
             )
             .bind(company)
             .bind(&job.external_id)
@@ -313,11 +315,47 @@ impl CoreTools {
             .bind(&location_json)
             .bind(&job.posted_at)
             .bind(&job.description)
+            .fetch_optional(&*self.db)
+            .await?;
+            if let Some((id,)) = row {
+                new_jobs.push((id, job.clone()));
+            }
+        }
+        Ok(new_jobs)
+    }
+
+    /// Log one notification attempt against the `notifications` audit
+    /// table.
+    pub async fn record_notification(
+        &self,
+        job_id: i64,
+        channel: &str,
+        sent_at: &str,
+        success: bool,
+        error: Option<&str>,
+    ) -> Result<(), ToolError> {
+        sqlx::query(
+            "INSERT INTO notifications (job_id, channel, sent_at, success, error) \
+             VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(job_id)
+        .bind(channel)
+        .bind(sent_at)
+        .bind(if success { 1i64 } else { 0 })
+        .bind(error)
+        .execute(&*self.db)
+        .await?;
+        Ok(())
+    }
+
+    /// Delete every `jobs` row for `company`. `notifications` rows are
+    /// removed automatically by the ON DELETE CASCADE foreign key.
+    pub async fn delete_company_jobs(&self, company: &str) -> Result<usize, ToolError> {
+        let result = sqlx::query("DELETE FROM jobs WHERE company_tag = ?")
+            .bind(company)
             .execute(&*self.db)
             .await?;
-            new_count += result.rows_affected() as usize;
-        }
-        Ok(new_count)
+        Ok(result.rows_affected() as usize)
     }
 
     /// Insert one row into the `token_usage` audit table.

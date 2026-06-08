@@ -6,6 +6,7 @@
 pub mod ipc_client;
 pub mod scheduler;
 
+use crate::notifications::OsChannel;
 use crate::runtime::Runtime;
 use crate::shutdown_signal;
 use axum::Json;
@@ -85,7 +86,9 @@ pub async fn run(runtime: Arc<Runtime>) -> Result<(), DaemonError> {
     info!(socket = %socket_path.display(), "daemon listening");
 
     let shutdown = Arc::new(Notify::new());
-    let scheduler = Scheduler::start(runtime.clone(), shutdown.clone()).await?;
+    let channel = Arc::new(OsChannel::new());
+    let scheduler = Scheduler::new(runtime.clone(), channel);
+    scheduler.start_loops(shutdown.clone()).await?;
     let state = DaemonState {
         runtime,
         shutdown,
@@ -207,7 +210,9 @@ mod tests {
 
         let listener = UnixListener::bind(&socket_path)?;
         let shutdown = Arc::new(Notify::new());
-        let scheduler = Scheduler::start(runtime.clone(), shutdown.clone()).await?;
+        let channel = Arc::new(OsChannel::new());
+        let scheduler = Scheduler::new(runtime.clone(), channel);
+        scheduler.start_loops(shutdown.clone()).await?;
         let state = DaemonState {
             runtime,
             shutdown,

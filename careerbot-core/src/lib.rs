@@ -4,6 +4,7 @@ pub mod config;
 pub mod daemon;
 pub mod db;
 pub mod log;
+pub mod notifications;
 pub mod paths;
 pub mod runtime;
 pub mod tools;
