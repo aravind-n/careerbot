@@ -1,3 +1,11 @@
 [workspace]
 resolver = "3"
-members = ["shared", "ingestor", "notifier", "api"]
+members = ["careerbot-core", "careerbot"]
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+rust-version = "1.85"
+
+[workspace.dependencies]
+careerbot-core = { path = "careerbot-core" }

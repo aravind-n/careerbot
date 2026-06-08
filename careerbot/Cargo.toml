@@ -1,0 +1,14 @@
+[package]
+name = "careerbot"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "careerbot"
+path = "src/main.rs"
+
+[dependencies]
+careerbot-core.workspace = true
+clap = { version = "4", features = ["derive"] }
