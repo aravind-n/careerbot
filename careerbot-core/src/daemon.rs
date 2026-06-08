@@ -4,14 +4,16 @@
 //! process, no fork, no PID file, supervisor-managed lifecycle.
 
 pub mod ipc_client;
+pub mod scheduler;
 
 use crate::runtime::Runtime;
 use crate::shutdown_signal;
 use axum::Json;
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Router, serve};
+use scheduler::Scheduler;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -56,13 +58,17 @@ pub struct StatusResponse {
 
 #[derive(Clone)]
 struct DaemonState {
-    /// Held for the scheduler that lands in the next commit; the
-    /// status/shutdown handlers don't consume it yet.
     #[allow(dead_code)]
     runtime: Arc<Runtime>,
     shutdown: Arc<Notify>,
     started_at: chrono::DateTime<chrono::Utc>,
     socket_path: PathBuf,
+    scheduler: Arc<Scheduler>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RunNowParams {
+    company: Option<String>,
 }
 
 /// Bind the IPC socket and serve until SIGINT/SIGTERM (or `POST
@@ -78,16 +84,20 @@ pub async fn run(runtime: Arc<Runtime>) -> Result<(), DaemonError> {
     let listener = UnixListener::bind(&socket_path)?;
     info!(socket = %socket_path.display(), "daemon listening");
 
+    let shutdown = Arc::new(Notify::new());
+    let scheduler = Scheduler::start(runtime.clone(), shutdown.clone()).await?;
     let state = DaemonState {
         runtime,
-        shutdown: Arc::new(Notify::new()),
+        shutdown,
         started_at: chrono::Utc::now(),
         socket_path: socket_path.clone(),
+        scheduler,
     };
 
     let router = Router::new()
         .route("/status", get(handle_status))
         .route("/shutdown", post(handle_shutdown))
+        .route("/run-now", post(handle_run_now))
         .with_state(state.clone());
 
     // Translate either SIGINT/SIGTERM or `POST /shutdown` into the
@@ -145,6 +155,18 @@ async fn handle_shutdown(State(state): State<DaemonState>) -> StatusCode {
     StatusCode::ACCEPTED
 }
 
+async fn handle_run_now(
+    State(state): State<DaemonState>,
+    Query(params): Query<RunNowParams>,
+) -> StatusCode {
+    let ok = state.scheduler.poke(params.company.as_deref()).await;
+    if ok {
+        StatusCode::ACCEPTED
+    } else {
+        StatusCode::NOT_FOUND
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -184,15 +206,19 @@ mod tests {
         ensure_socket_unoccupied(&socket_path).await?;
 
         let listener = UnixListener::bind(&socket_path)?;
+        let shutdown = Arc::new(Notify::new());
+        let scheduler = Scheduler::start(runtime.clone(), shutdown.clone()).await?;
         let state = DaemonState {
             runtime,
-            shutdown: Arc::new(Notify::new()),
+            shutdown,
             started_at: chrono::Utc::now(),
             socket_path: socket_path.clone(),
+            scheduler,
         };
         let router = Router::new()
             .route("/status", get(handle_status))
             .route("/shutdown", post(handle_shutdown))
+            .route("/run-now", post(handle_run_now))
             .with_state(state.clone());
 
         let shutdown = state.shutdown.clone();

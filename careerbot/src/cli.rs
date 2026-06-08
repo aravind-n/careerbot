@@ -117,6 +117,7 @@ pub async fn run(cli: Cli) -> ExitCode {
         Command::StartService => handle_start_service().await,
         Command::StopService => handle_stop_service().await,
         Command::Status => handle_status().await,
+        Command::RunNow { company } => handle_run_now(company).await,
         _ => {
             println!("not implemented yet");
             ExitCode::SUCCESS
@@ -344,6 +345,44 @@ async fn handle_stop_service() -> ExitCode {
             )),
             Err(e) => die(format_args!("{e}")),
         },
+        Err(e) => die(format_args!("{e}")),
+    }
+}
+
+async fn handle_run_now(company: Option<String>) -> ExitCode {
+    let paths = match Paths::from_env() {
+        Ok(p) => p,
+        Err(e) => return die(format_args!("{e}")),
+    };
+    let socket = paths.socket_path();
+    match ipc_client::is_running(&socket).await {
+        Ok(false) => die(format_args!(
+            "daemon is not running; start it with `careerbot start-service`"
+        )),
+        Ok(true) => {
+            let path = match company.as_deref() {
+                Some(c) => format!("/run-now?company={c}"),
+                None => "/run-now".to_string(),
+            };
+            match ipc_client::request(&socket, "POST", &path, &[]).await {
+                Ok((202, _)) => {
+                    match company {
+                        Some(c) => println!("tick queued for {c}"),
+                        None => println!("tick queued for all companies"),
+                    }
+                    ExitCode::SUCCESS
+                }
+                Ok((404, _)) => {
+                    let name = company.unwrap_or_default();
+                    die(format_args!(
+                        "company {:?} is not registered (no scripts/{}.py)",
+                        name, name
+                    ))
+                }
+                Ok((status, body)) => die(format_args!("unexpected status: {} {}", status, body)),
+                Err(e) => die(format_args!("{e}")),
+            }
+        }
         Err(e) => die(format_args!("{e}")),
     }
 }

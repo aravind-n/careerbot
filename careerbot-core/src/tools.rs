@@ -286,6 +286,40 @@ impl CoreTools {
             .collect())
     }
 
+    /// Persist a batch of jobs returned by `run_script`. Existing rows
+    /// (matched by `(company_tag, external_id)`) are silently skipped
+    /// thanks to the table's UNIQUE constraint; the return value counts
+    /// only the genuinely new rows.
+    pub async fn insert_jobs(
+        &self,
+        company: &str,
+        jobs: &[RawJob],
+    ) -> Result<usize, ToolError> {
+        let mut new_count = 0;
+        for job in jobs {
+            let location_json = job
+                .location
+                .as_ref()
+                .map(|locs| serde_json::to_string(locs).unwrap_or_default());
+            let result = sqlx::query(
+                "INSERT OR IGNORE INTO jobs \
+                 (company_tag, external_id, title, url, location, posted_at, description) \
+                 VALUES (?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(company)
+            .bind(&job.external_id)
+            .bind(&job.title)
+            .bind(&job.url)
+            .bind(&location_json)
+            .bind(&job.posted_at)
+            .bind(&job.description)
+            .execute(&*self.db)
+            .await?;
+            new_count += result.rows_affected() as usize;
+        }
+        Ok(new_count)
+    }
+
     /// Insert one row into the `token_usage` audit table.
     pub async fn record_token_usage(&self, usage: TokenUsage) -> Result<(), ToolError> {
         sqlx::query(
