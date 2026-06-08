@@ -1,9 +1,8 @@
 use tracing_subscriber::EnvFilter;
 
-/// Initializes `tracing_subscriber` configuration
+/// Initializes the global `tracing` subscriber.
 ///
-/// This allows the package to output logs using
-/// the `tracing` crate
+/// Output is JSON, level is controlled by `RUST_LOG`.
 pub fn init_tracing() {
     tracing_subscriber::fmt()
         .json()
