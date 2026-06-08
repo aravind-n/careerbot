@@ -5,6 +5,8 @@
 //! See PLAN.md §4 for the trait shape and §5 for the tool layer the
 //! drivers share.
 
+pub mod anthropic_api;
+
 use crate::tools::{CoreTools, ToolError};
 use async_trait::async_trait;
 use std::path::PathBuf;
