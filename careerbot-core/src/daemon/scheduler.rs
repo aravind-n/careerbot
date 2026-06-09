@@ -204,9 +204,7 @@ async fn perform_tick(
         }
         Err(e) => {
             let (exit_code, stderr_tail) = match &e {
-                ToolError::Script { stderr, exit_code } => {
-                    (Some(*exit_code), Some(stderr.clone()))
-                }
+                ToolError::Script { stderr, exit_code } => (Some(*exit_code), Some(stderr.clone())),
                 _ => (None, None),
             };
             let result = RunResult {
@@ -344,10 +342,7 @@ mod tests {
     /// can drive ticks deterministically.
     fn scheduler_with_mock_channel(
         rt: Arc<Runtime>,
-    ) -> (
-        Arc<Scheduler>,
-        Arc<AsyncMutex<Vec<Notification>>>,
-    ) {
+    ) -> (Arc<Scheduler>, Arc<AsyncMutex<Vec<Notification>>>) {
         let (channel, recorded) = MockChannel::new();
         let scheduler = Scheduler::new(rt, Arc::new(channel));
         (scheduler, recorded)

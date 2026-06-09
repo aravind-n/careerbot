@@ -1,10 +1,10 @@
+use careerbot_core::commands::CommandError;
 use careerbot_core::commands::add_company as add_company_cmd;
 use careerbot_core::commands::feedback as feedback_cmd;
 use careerbot_core::commands::filters as filters_cmd;
 use careerbot_core::commands::init as init_cmd;
 use careerbot_core::commands::profile as profile_cmd;
 use careerbot_core::commands::remove_company as remove_company_cmd;
-use careerbot_core::commands::CommandError;
 use careerbot_core::config::{self, Config};
 use careerbot_core::daemon;
 use careerbot_core::daemon::ipc_client;
@@ -74,10 +74,7 @@ pub enum Command {
     },
 
     /// Add a company (url optional; agent auto-discovers)
-    AddCompany {
-        name: String,
-        url: Option<String>,
-    },
+    AddCompany { name: String, url: Option<String> },
 
     /// Remove a company (deletes the script)
     RemoveCompany { name: String },
@@ -397,10 +394,7 @@ async fn handle_init(force: bool) -> ExitCode {
         Ok(d) => d,
         Err(e) => return die(format_args!("{e}")),
     };
-    if let Err(e) = rt
-        .config
-        .set("agent.driver", config::parse_value(&driver))
-    {
+    if let Err(e) = rt.config.set("agent.driver", config::parse_value(&driver)) {
         return die(format_args!("{e}"));
     }
     if driver == "anthropic_api" {
@@ -446,7 +440,9 @@ async fn handle_init(force: bool) -> ExitCode {
                             "Script saved but verification failed: {}",
                             out.verification_error.as_deref().unwrap_or("unknown")
                         );
-                        eprintln!("You can inspect it later with `careerbot remove-company {name}`.");
+                        eprintln!(
+                            "You can inspect it later with `careerbot remove-company {name}`."
+                        );
                     }
                 }
                 Err(e) => {

@@ -172,6 +172,9 @@ mod tests {
         let snap = buf.snapshot();
         assert_eq!(snap.len(), RING_CAPACITY);
         assert_eq!(snap[0], format!("line {}", 10));
-        assert_eq!(snap[RING_CAPACITY - 1], format!("line {}", RING_CAPACITY + 9));
+        assert_eq!(
+            snap[RING_CAPACITY - 1],
+            format!("line {}", RING_CAPACITY + 9)
+        );
     }
 }

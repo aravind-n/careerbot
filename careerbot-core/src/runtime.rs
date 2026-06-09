@@ -28,9 +28,15 @@ pub enum RuntimeError {
     Io(std::io::Error),
     Config(ConfigError),
     Db(sqlx::Error),
-    MissingConfig { key: &'static str, hint: &'static str },
+    MissingConfig {
+        key: &'static str,
+        hint: &'static str,
+    },
     UnsupportedDriver(String),
-    DriverInit { driver: &'static str, reason: String },
+    DriverInit {
+        driver: &'static str,
+        reason: String,
+    },
 }
 
 impl std::fmt::Display for RuntimeError {
@@ -44,7 +50,10 @@ impl std::fmt::Display for RuntimeError {
             }
             Self::UnsupportedDriver(s) => write!(f, "unsupported agent.driver: {:?}", s),
             Self::DriverInit { driver, reason } => {
-                write!(f, "failed to initialize agent.driver = {driver:?}: {reason}")
+                write!(
+                    f,
+                    "failed to initialize agent.driver = {driver:?}: {reason}"
+                )
             }
         }
     }
@@ -98,25 +107,24 @@ impl Runtime {
         let driver_name =
             string_config(&self.config, "agent.driver").ok_or(RuntimeError::MissingConfig {
                 key: "agent.driver",
-                hint:
-                    "run `careerbot config agent.driver anthropic_api` \
+                hint: "run `careerbot config agent.driver anthropic_api` \
                      (or `claude_code` if Claude Code is installed)",
             })?;
 
         match driver_name.as_str() {
             "anthropic_api" => {
-                let api_key = string_config(&self.config, "agent.anthropic_api.api_key")
-                    .ok_or(RuntimeError::MissingConfig {
+                let api_key = string_config(&self.config, "agent.anthropic_api.api_key").ok_or(
+                    RuntimeError::MissingConfig {
                         key: "agent.anthropic_api.api_key",
                         hint: "run `careerbot config agent.anthropic_api.api_key <KEY>`",
-                    })?;
+                    },
+                )?;
 
                 let mut driver = AnthropicApiDriver::new(api_key);
                 if let Some(model) = string_config(&self.config, "agent.anthropic_api.model") {
                     driver = driver.with_model(model);
                 }
-                if let Some(base_url) =
-                    string_config(&self.config, "agent.anthropic_api.base_url")
+                if let Some(base_url) = string_config(&self.config, "agent.anthropic_api.base_url")
                 {
                     driver = driver.with_base_url(base_url);
                 }

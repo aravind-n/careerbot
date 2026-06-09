@@ -102,12 +102,7 @@ pub(crate) mod test_support {
     impl MockChannel {
         pub fn new() -> (Self, Arc<Mutex<Vec<Notification>>>) {
             let sent = Arc::new(Mutex::new(Vec::new()));
-            (
-                Self {
-                    sent: sent.clone(),
-                },
-                sent,
-            )
+            (Self { sent: sent.clone() }, sent)
         }
     }
 

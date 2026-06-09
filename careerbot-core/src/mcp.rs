@@ -304,10 +304,12 @@ mod tests {
         let resp = handle_line(&kit, &req).await.unwrap();
         let result = resp.result_value().unwrap();
         assert_eq!(result["isError"], true);
-        assert!(result["content"][0]["text"]
-            .as_str()
-            .unwrap()
-            .contains("unknown tool"));
+        assert!(
+            result["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .contains("unknown tool")
+        );
     }
 
     #[tokio::test]
