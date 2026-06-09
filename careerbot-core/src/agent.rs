@@ -7,6 +7,7 @@
 
 pub mod anthropic_api;
 pub mod prompts;
+pub mod tool_dispatch;
 
 use crate::tools::{CoreTools, ToolError};
 use async_trait::async_trait;
