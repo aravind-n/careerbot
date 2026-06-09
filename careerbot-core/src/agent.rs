@@ -37,6 +37,7 @@ impl ToolKit {
 /// Capability flags a driver advertises so the daemon can fall back to
 /// emulation (or refuse a request) when a feature is missing.
 #[derive(Debug, Clone, Default)]
+#[allow(clippy::struct_excessive_bools, reason = "named capability flags")]
 pub struct Capabilities {
     pub native_web_search: bool,
     pub file_attachments: bool,
@@ -98,14 +99,14 @@ pub enum AgentError {
 impl std::fmt::Display for AgentError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Http(e) => write!(f, "{}", e),
-            Self::Api { status, body } => write!(f, "API error {}: {}", status, body),
-            Self::Tool(e) => write!(f, "tool: {}", e),
-            Self::Serde(e) => write!(f, "{}", e),
+            Self::Http(e) => write!(f, "{e}"),
+            Self::Api { status, body } => write!(f, "API error {status}: {body}"),
+            Self::Tool(e) => write!(f, "tool: {e}"),
+            Self::Serde(e) => write!(f, "{e}"),
             Self::LoopExhausted { iterations } => {
-                write!(f, "agent loop exhausted after {} iterations", iterations)
+                write!(f, "agent loop exhausted after {iterations} iterations")
             }
-            Self::InvalidResponse(s) => write!(f, "invalid driver response: {}", s),
+            Self::InvalidResponse(s) => write!(f, "invalid driver response: {s}"),
         }
     }
 }

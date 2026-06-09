@@ -36,7 +36,7 @@ pub enum DaemonError {
 impl std::fmt::Display for DaemonError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Io(e) => write!(f, "{}", e),
+            Self::Io(e) => write!(f, "{e}"),
             Self::AlreadyRunning { socket } => write!(
                 f,
                 "another careerbot daemon is already listening on {}",
@@ -217,7 +217,7 @@ async fn handle_logs_stream(
         loop {
             match rx.recv().await {
                 Ok(line) => return Some((Ok(Event::default().data(line)), rx)),
-                Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(broadcast::error::RecvError::Lagged(_)) => {}
                 Err(broadcast::error::RecvError::Closed) => return None,
             }
         }

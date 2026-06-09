@@ -50,16 +50,16 @@ pub enum ToolError {
 impl std::fmt::Display for ToolError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Io(e) => write!(f, "{}", e),
-            Self::Db(e) => write!(f, "{}", e),
-            Self::Http(e) => write!(f, "{}", e),
-            Self::Json(e) => write!(f, "{}", e),
+            Self::Io(e) => write!(f, "{e}"),
+            Self::Db(e) => write!(f, "{e}"),
+            Self::Http(e) => write!(f, "{e}"),
+            Self::Json(e) => write!(f, "{e}"),
             Self::Script { stderr, exit_code } => {
-                write!(f, "script exited {}: {}", exit_code, stderr)
+                write!(f, "script exited {exit_code}: {stderr}")
             }
-            Self::InvalidNdjson(s) => write!(f, "invalid NDJSON: {}", s),
-            Self::InvalidCompany(s) => write!(f, "invalid company name {:?}", s),
-            Self::ScriptTimeout(d) => write!(f, "script timed out after {:?}", d),
+            Self::InvalidNdjson(s) => write!(f, "invalid NDJSON: {s}"),
+            Self::InvalidCompany(s) => write!(f, "invalid company name {s:?}"),
+            Self::ScriptTimeout(d) => write!(f, "script timed out after {d:?}"),
         }
     }
 }
@@ -152,8 +152,8 @@ impl CoreTools {
     pub async fn save_script(&self, company: &str, code: &str) -> Result<(), ToolError> {
         validate_company(company)?;
         let dir = self.paths.scripts_dir();
-        std::fs::create_dir_all(&dir)?;
-        std::fs::write(dir.join(format!("{}.py", company)), code)?;
+        tokio::fs::create_dir_all(&dir).await?;
+        tokio::fs::write(dir.join(format!("{company}.py")), code).await?;
         Ok(())
     }
 
@@ -164,7 +164,7 @@ impl CoreTools {
     /// receives SIGKILL when the future is dropped).
     pub async fn run_script(&self, company: &str) -> Result<Vec<RawJob>, ToolError> {
         validate_company(company)?;
-        let path = self.paths.scripts_dir().join(format!("{}.py", company));
+        let path = self.paths.scripts_dir().join(format!("{company}.py"));
         let (program, args) = self
             .script_runner
             .split_first()
@@ -206,13 +206,13 @@ impl CoreTools {
     /// Read `memory/profile.md`. Returns `Io(NotFound)` if missing.
     pub async fn read_profile(&self) -> Result<String, ToolError> {
         let path = self.paths.memory_dir().join("profile.md");
-        Ok(std::fs::read_to_string(path)?)
+        Ok(tokio::fs::read_to_string(path).await?)
     }
 
     /// Read `memory/filters.json`. A missing file yields `Filters::default()`.
     pub async fn read_filters(&self) -> Result<Filters, ToolError> {
         let path = self.paths.memory_dir().join("filters.json");
-        match std::fs::read_to_string(&path) {
+        match tokio::fs::read_to_string(&path).await {
             Ok(s) => Ok(serde_json::from_str(&s)?),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Filters::default()),
             Err(e) => Err(e.into()),
@@ -222,17 +222,17 @@ impl CoreTools {
     /// Overwrite `memory/profile.md`, creating the directory if needed.
     pub async fn write_profile(&self, content: &str) -> Result<(), ToolError> {
         let dir = self.paths.memory_dir();
-        std::fs::create_dir_all(&dir)?;
-        std::fs::write(dir.join("profile.md"), content)?;
+        tokio::fs::create_dir_all(&dir).await?;
+        tokio::fs::write(dir.join("profile.md"), content).await?;
         Ok(())
     }
 
     /// Overwrite `memory/filters.json` with pretty-printed JSON.
     pub async fn write_filters(&self, filters: &Filters) -> Result<(), ToolError> {
         let dir = self.paths.memory_dir();
-        std::fs::create_dir_all(&dir)?;
+        tokio::fs::create_dir_all(&dir).await?;
         let s = serde_json::to_string_pretty(filters)?;
-        std::fs::write(dir.join("filters.json"), s)?;
+        tokio::fs::write(dir.join("filters.json"), s).await?;
         Ok(())
     }
 
@@ -338,7 +338,7 @@ impl CoreTools {
         .bind(job_id)
         .bind(channel)
         .bind(sent_at)
-        .bind(if success { 1i64 } else { 0 })
+        .bind(i64::from(success))
         .bind(error)
         .execute(&*self.db)
         .await?;

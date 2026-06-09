@@ -13,8 +13,8 @@ pub struct FeedbackOutput {
 }
 
 /// Run the `feedback` agent against the user's free-form text. The
-/// agent is expected to call read_profile / read_filters and then
-/// targeted write_profile / write_filters as needed; we just return
+/// agent is expected to call `read_profile` / `read_filters` and then
+/// targeted `write_profile` / `write_filters` as needed; we just return
 /// the cost and the summary.
 pub async fn send(rt: &Runtime, text: &str) -> Result<FeedbackOutput, CommandError> {
     if text.trim().is_empty() {
@@ -75,9 +75,8 @@ mod tests {
     #[tokio::test]
     async fn rejects_empty_feedback() {
         let (_dir, rt, _server) = rooted_with_mock().await;
-        let err = match send(&rt, "   ").await {
-            Err(e) => e,
-            Ok(_) => panic!("expected InvalidInput"),
+        let Err(err) = send(&rt, "   ").await else {
+            panic!("expected InvalidInput");
         };
         assert!(matches!(err, CommandError::InvalidInput(_)));
     }

@@ -1,6 +1,6 @@
 //! `Runtime` is the loaded-session object the CLI and daemon build
 //! once at startup: it owns the parsed `config.toml`, the resolved
-//! [`Paths`], an opened SQLite pool (migrations already applied), and
+//! [`Paths`], an opened `SQLite` pool (migrations already applied), and
 //! a constructed [`CoreTools`]. `build_driver` reads the
 //! agent-related keys from config and returns a boxed
 //! [`AgentDriver`].
@@ -42,13 +42,13 @@ pub enum RuntimeError {
 impl std::fmt::Display for RuntimeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Io(e) => write!(f, "{}", e),
-            Self::Config(e) => write!(f, "{}", e),
-            Self::Db(e) => write!(f, "{}", e),
+            Self::Io(e) => write!(f, "{e}"),
+            Self::Config(e) => write!(f, "{e}"),
+            Self::Db(e) => write!(f, "{e}"),
             Self::MissingConfig { key, hint } => {
-                write!(f, "missing config key {:?}; {}", key, hint)
+                write!(f, "missing config key {key:?}; {hint}")
             }
-            Self::UnsupportedDriver(s) => write!(f, "unsupported agent.driver: {:?}", s),
+            Self::UnsupportedDriver(s) => write!(f, "unsupported agent.driver: {s:?}"),
             Self::DriverInit { driver, reason } => {
                 write!(
                     f,

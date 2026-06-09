@@ -61,7 +61,7 @@ pub enum Command {
         /// Open profile.md in $EDITOR
         #[arg(long, conflicts_with = "from_resume")]
         edit: bool,
-        /// Re-ingest resume from path (runs profile_init agent)
+        /// Re-ingest resume from path (runs `profile_init` agent)
         #[arg(long, value_name = "PATH")]
         from_resume: Option<PathBuf>,
     },
@@ -347,8 +347,7 @@ async fn handle_stop_service() -> ExitCode {
                 ExitCode::SUCCESS
             }
             Ok((status, body)) => die(format_args!(
-                "unexpected response from daemon: {} {}",
-                status, body
+                "unexpected response from daemon: {status} {body}"
             )),
             Err(e) => die(format_args!("{e}")),
         },
@@ -677,11 +676,10 @@ async fn handle_run_now(company: Option<String>) -> ExitCode {
                 Ok((404, _)) => {
                     let name = company.unwrap_or_default();
                     die(format_args!(
-                        "company {:?} is not registered (no scripts/{}.py)",
-                        name, name
+                        "company {name:?} is not registered (no scripts/{name}.py)"
                     ))
                 }
-                Ok((status, body)) => die(format_args!("unexpected status: {} {}", status, body)),
+                Ok((status, body)) => die(format_args!("unexpected status: {status} {body}")),
                 Err(e) => die(format_args!("{e}")),
             }
         }
@@ -793,7 +791,7 @@ async fn handle_status() -> ExitCode {
                 println!("{body}");
                 ExitCode::SUCCESS
             }
-            Ok((status, body)) => die(format_args!("unexpected status: {} {}", status, body)),
+            Ok((status, body)) => die(format_args!("unexpected status: {status} {body}")),
             Err(e) => die(format_args!("{e}")),
         },
         Err(e) => die(format_args!("{e}")),

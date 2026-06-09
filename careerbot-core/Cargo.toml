@@ -1,9 +1,17 @@
 [package]
 name = "careerbot-core"
 version = "0.1.0"
+description = "careerbot's library crate: config, storage, tools, agent drivers, and daemon logic."
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+repository.workspace = true
+readme.workspace = true
+categories.workspace = true
+keywords.workspace = true
+
+[lints]
+workspace = true
 
 [dependencies]
 async-trait = "0.1"

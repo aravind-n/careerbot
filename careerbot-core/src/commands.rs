@@ -31,12 +31,12 @@ pub enum CommandError {
 impl std::fmt::Display for CommandError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Runtime(e) => write!(f, "{}", e),
-            Self::Agent(e) => write!(f, "{}", e),
-            Self::Tool(e) => write!(f, "{}", e),
-            Self::Io(e) => write!(f, "{}", e),
-            Self::NotFound { what } => write!(f, "{} not found", what),
-            Self::InvalidInput(s) => write!(f, "{}", s),
+            Self::Runtime(e) => write!(f, "{e}"),
+            Self::Agent(e) => write!(f, "{e}"),
+            Self::Tool(e) => write!(f, "{e}"),
+            Self::Io(e) => write!(f, "{e}"),
+            Self::NotFound { what } => write!(f, "{what} not found"),
+            Self::InvalidInput(s) => write!(f, "{s}"),
         }
     }
 }

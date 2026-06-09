@@ -10,7 +10,7 @@ use std::str::FromStr;
 /// repo at runtime to migrate a fresh database.
 pub static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
-/// Open (or create) the SQLite database at `path` and apply pending
+/// Open (or create) the `SQLite` database at `path` and apply pending
 /// migrations.  `create_if_missing` is on so a brand-new install lands
 /// directly in a usable state; foreign keys are enabled per row so the
 /// notifications → jobs CASCADE actually fires.
@@ -31,7 +31,7 @@ pub async fn open(path: &Path) -> Result<SqlitePool, sqlx::Error> {
 }
 
 /// In-memory database, primarily for tests. Each call returns a fresh
-/// isolated pool. SQLite's `sqlite::memory:` databases are private to
+/// isolated pool. `SQLite`'s `sqlite::memory:` databases are private to
 /// a single connection, so the pool is capped at `max_connections(1)`
 /// to keep every query in the same logical database.
 pub async fn open_memory() -> Result<SqlitePool, sqlx::Error> {

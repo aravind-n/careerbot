@@ -172,7 +172,7 @@ async fn tools_call_result(toolkit: &ToolKit, params: &Value) -> Result<Value, R
     let arguments = params
         .get("arguments")
         .cloned()
-        .unwrap_or_else(|| Value::Object(Default::default()));
+        .unwrap_or_else(|| Value::Object(serde_json::Map::default()));
 
     let (text, is_error) = match dispatch_tool(toolkit, name, &arguments).await {
         Ok(s) => (s, false),
@@ -226,17 +226,14 @@ mod tests {
         (dir, ToolKit::in_process(Arc::new(tools)))
     }
 
-    fn line(method: &str, params: Value, id: i64) -> String {
-        format!(
-            "{}",
-            json!({"jsonrpc": "2.0", "method": method, "params": params, "id": id})
-        )
+    fn line(method: &str, params: &Value, id: i64) -> String {
+        json!({"jsonrpc": "2.0", "method": method, "params": params, "id": id}).to_string()
     }
 
     #[tokio::test]
     async fn initialize_returns_protocol_version_and_server_info() {
         let (_dir, kit) = toolkit().await;
-        let req = line("initialize", json!({"protocolVersion": "2024-11-05"}), 1);
+        let req = line("initialize", &json!({"protocolVersion": "2024-11-05"}), 1);
         let resp = handle_line(&kit, &req).await.unwrap();
         assert_eq!(resp.id_value(), &json!(1));
         let result = resp.result_value().unwrap();
@@ -248,7 +245,7 @@ mod tests {
     #[tokio::test]
     async fn initialize_falls_back_when_version_missing() {
         let (_dir, kit) = toolkit().await;
-        let req = line("initialize", json!({}), 2);
+        let req = line("initialize", &json!({}), 2);
         let resp = handle_line(&kit, &req).await.unwrap();
         let result = resp.result_value().unwrap();
         assert_eq!(result["protocolVersion"], FALLBACK_PROTOCOL_VERSION);
@@ -257,7 +254,7 @@ mod tests {
     #[tokio::test]
     async fn tools_list_returns_the_eight_canonical_tools() {
         let (_dir, kit) = toolkit().await;
-        let req = line("tools/list", json!({}), 3);
+        let req = line("tools/list", &json!({}), 3);
         let resp = handle_line(&kit, &req).await.unwrap();
         let tools = resp.result_value().unwrap()["tools"].as_array().unwrap();
         assert_eq!(tools.len(), 8);
@@ -272,7 +269,7 @@ mod tests {
         // Write the profile through the tool, then read it back.
         let write_req = line(
             "tools/call",
-            json!({"name": "write_profile", "arguments": {"content": "# Profile\nhi"}}),
+            &json!({"name": "write_profile", "arguments": {"content": "# Profile\nhi"}}),
             4,
         );
         let write_resp = handle_line(&kit, &write_req).await.unwrap();
@@ -285,7 +282,7 @@ mod tests {
 
         let read_req = line(
             "tools/call",
-            json!({"name": "read_profile", "arguments": {}}),
+            &json!({"name": "read_profile", "arguments": {}}),
             5,
         );
         let read_resp = handle_line(&kit, &read_req).await.unwrap();
@@ -298,7 +295,7 @@ mod tests {
         let (_dir, kit) = toolkit().await;
         let req = line(
             "tools/call",
-            json!({"name": "does_not_exist", "arguments": {}}),
+            &json!({"name": "does_not_exist", "arguments": {}}),
             6,
         );
         let resp = handle_line(&kit, &req).await.unwrap();
@@ -315,7 +312,7 @@ mod tests {
     #[tokio::test]
     async fn unknown_method_returns_method_not_found() {
         let (_dir, kit) = toolkit().await;
-        let req = line("does/not/exist", json!({}), 7);
+        let req = line("does/not/exist", &json!({}), 7);
         let resp = handle_line(&kit, &req).await.unwrap();
         assert_eq!(resp.error_code(), Some(METHOD_NOT_FOUND));
     }

@@ -1,17 +1,21 @@
 [package]
 name = "careerbot"
 version = "0.1.0"
+description = "Single-user local daemon that watches company careers sites for jobs matching your resume."
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+repository.workspace = true
+readme.workspace = true
+categories.workspace = true
+keywords.workspace = true
 
 [[bin]]
 name = "careerbot"
 path = "src/main.rs"
 
-[lints.clippy]
-cargo = "warn"
-pedantic = "warn"
+[lints]
+workspace = true
 
 [dependencies]
 careerbot-core.workspace = true

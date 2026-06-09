@@ -146,7 +146,7 @@ mod tests {
                 if guard.len() >= RING_CAPACITY {
                     guard.pop_front();
                 }
-                guard.push_back(format!("line {}", i));
+                guard.push_back(format!("line {i}"));
             }
         }
     }

@@ -119,9 +119,8 @@ mod tests {
     #[tokio::test]
     async fn add_company_rejects_unsafe_name() {
         let (_dir, rt, _server) = rooted_with_mock().await;
-        let err = match add_company(&rt, "../etc/passwd", None).await {
-            Err(e) => e,
-            Ok(_) => panic!("expected InvalidInput"),
+        let Err(err) = add_company(&rt, "../etc/passwd", None).await else {
+            panic!("expected InvalidInput");
         };
         assert!(matches!(err, CommandError::InvalidInput(_)));
     }
