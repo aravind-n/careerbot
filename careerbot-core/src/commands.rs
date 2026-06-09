@@ -8,6 +8,9 @@
 //! handler; this module just composes the runtime + agent layer.
 
 pub mod add_company;
+pub mod feedback;
+pub mod filters;
+pub mod init;
 pub mod profile;
 pub mod remove_company;
 

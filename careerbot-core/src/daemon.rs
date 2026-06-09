@@ -6,20 +6,25 @@
 pub mod ipc_client;
 pub mod scheduler;
 
+use crate::log::LogBuffer;
 use crate::notifications::OsChannel;
 use crate::runtime::Runtime;
 use crate::shutdown_signal;
 use axum::Json;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
+use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::routing::{get, post};
 use axum::{Router, serve};
+use futures_util::stream::Stream;
 use scheduler::Scheduler;
 use serde::{Deserialize, Serialize};
+use std::convert::Infallible;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::Notify;
+use tokio::sync::broadcast;
 use tracing::{info, warn};
 
 #[derive(Debug)]
@@ -65,6 +70,7 @@ struct DaemonState {
     started_at: chrono::DateTime<chrono::Utc>,
     socket_path: PathBuf,
     scheduler: Arc<Scheduler>,
+    log_buffer: LogBuffer,
 }
 
 #[derive(Debug, Deserialize)]
@@ -72,9 +78,14 @@ struct RunNowParams {
     company: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+struct LogsResponse {
+    lines: Vec<String>,
+}
+
 /// Bind the IPC socket and serve until SIGINT/SIGTERM (or `POST
 /// /shutdown`). Cleans up the socket file on the way out.
-pub async fn run(runtime: Arc<Runtime>) -> Result<(), DaemonError> {
+pub async fn run(runtime: Arc<Runtime>, log_buffer: LogBuffer) -> Result<(), DaemonError> {
     let socket_path = runtime.paths.socket_path();
 
     if let Some(parent) = socket_path.parent() {
@@ -96,12 +107,15 @@ pub async fn run(runtime: Arc<Runtime>) -> Result<(), DaemonError> {
         started_at: chrono::Utc::now(),
         socket_path: socket_path.clone(),
         scheduler,
+        log_buffer,
     };
 
     let router = Router::new()
         .route("/status", get(handle_status))
         .route("/shutdown", post(handle_shutdown))
         .route("/run-now", post(handle_run_now))
+        .route("/logs", get(handle_logs))
+        .route("/logs/stream", get(handle_logs_stream))
         .with_state(state.clone());
 
     // Translate either SIGINT/SIGTERM or `POST /shutdown` into the
@@ -189,6 +203,28 @@ async fn handle_run_now(
     }
 }
 
+async fn handle_logs(State(state): State<DaemonState>) -> Json<LogsResponse> {
+    Json(LogsResponse {
+        lines: state.log_buffer.snapshot(),
+    })
+}
+
+async fn handle_logs_stream(
+    State(state): State<DaemonState>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let rx = state.log_buffer.subscribe();
+    let stream = futures_util::stream::unfold(rx, |mut rx| async move {
+        loop {
+            match rx.recv().await {
+                Ok(line) => return Some((Ok(Event::default().data(line)), rx)),
+                Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(broadcast::error::RecvError::Closed) => return None,
+            }
+        }
+    });
+    Sse::new(stream).keep_alive(KeepAlive::default())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -239,11 +275,14 @@ mod tests {
             started_at: chrono::Utc::now(),
             socket_path: socket_path.clone(),
             scheduler,
+            log_buffer: LogBuffer::empty(),
         };
         let router = Router::new()
             .route("/status", get(handle_status))
             .route("/shutdown", post(handle_shutdown))
             .route("/run-now", post(handle_run_now))
+            .route("/logs", get(handle_logs))
+            .route("/logs/stream", get(handle_logs_stream))
             .with_state(state.clone());
 
         let shutdown = state.shutdown.clone();
