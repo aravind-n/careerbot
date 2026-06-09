@@ -1,12 +1,17 @@
 use careerbot_core::commands::add_company as add_company_cmd;
 use careerbot_core::commands::profile as profile_cmd;
+use careerbot_core::commands::remove_company as remove_company_cmd;
 use careerbot_core::commands::CommandError;
 use careerbot_core::config::{self, Config};
+use careerbot_core::daemon;
+use careerbot_core::daemon::ipc_client;
+use careerbot_core::daemon::scheduler;
 use careerbot_core::paths::Paths;
 use careerbot_core::runtime::Runtime;
 use clap::{CommandFactory, Parser, Subcommand};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::Arc;
 
 #[derive(Parser)]
 #[command(
@@ -111,6 +116,12 @@ pub async fn run(cli: Cli) -> ExitCode {
         } => handle_config(key, value, list, edit, unset),
         Command::Profile { edit, from_resume } => handle_profile(edit, from_resume).await,
         Command::AddCompany { name, url } => handle_add_company(name, url).await,
+        Command::StartService => handle_start_service().await,
+        Command::StopService => handle_stop_service().await,
+        Command::Status => handle_status().await,
+        Command::RunNow { company } => handle_run_now(company).await,
+        Command::ListCompanies => handle_list_companies().await,
+        Command::RemoveCompany { name } => handle_remove_company(name).await,
         _ => {
             println!("not implemented yet");
             ExitCode::SUCCESS
@@ -302,6 +313,142 @@ async fn handle_add_company(name: String, url: Option<String>) -> ExitCode {
         );
         eprintln!("(script was saved; inspect or remove via `careerbot remove-company {name}`)");
         ExitCode::FAILURE
+    }
+}
+
+async fn handle_start_service() -> ExitCode {
+    let rt = match Runtime::open().await {
+        Ok(r) => Arc::new(r),
+        Err(e) => return die(format_args!("{e}")),
+    };
+    match daemon::run(rt).await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => die(format_args!("{e}")),
+    }
+}
+
+async fn handle_stop_service() -> ExitCode {
+    let paths = match Paths::from_env() {
+        Ok(p) => p,
+        Err(e) => return die(format_args!("{e}")),
+    };
+    let socket = paths.socket_path();
+    match ipc_client::is_running(&socket).await {
+        Ok(false) => {
+            eprintln!("daemon is not running");
+            ExitCode::SUCCESS
+        }
+        Ok(true) => match ipc_client::request(&socket, "POST", "/shutdown", &[]).await {
+            Ok((202, _)) => {
+                println!("daemon shutting down");
+                ExitCode::SUCCESS
+            }
+            Ok((status, body)) => die(format_args!(
+                "unexpected response from daemon: {} {}",
+                status, body
+            )),
+            Err(e) => die(format_args!("{e}")),
+        },
+        Err(e) => die(format_args!("{e}")),
+    }
+}
+
+async fn handle_list_companies() -> ExitCode {
+    let rt = match Runtime::open().await {
+        Ok(r) => r,
+        Err(e) => return die(format_args!("{e}")),
+    };
+    let names = match scheduler::discover_companies(&rt) {
+        Ok(n) => n,
+        Err(e) => return die(format_args!("{e}")),
+    };
+    if names.is_empty() {
+        eprintln!("(no companies — add one with `careerbot add-company <name> [url]`)");
+    } else {
+        for name in names {
+            println!("{name}");
+        }
+    }
+    ExitCode::SUCCESS
+}
+
+async fn handle_remove_company(name: String) -> ExitCode {
+    let rt = match Runtime::open().await {
+        Ok(r) => r,
+        Err(e) => return die(format_args!("{e}")),
+    };
+    match remove_company_cmd::remove(&rt, &name).await {
+        Ok(out) => {
+            if out.script_removed {
+                println!("removed scripts/{name}.py");
+            } else {
+                println!("no script for {name}");
+            }
+            eprintln!("deleted {} job row(s)", out.jobs_removed);
+            ExitCode::SUCCESS
+        }
+        Err(e) => die(format_args!("{e}")),
+    }
+}
+
+async fn handle_run_now(company: Option<String>) -> ExitCode {
+    let paths = match Paths::from_env() {
+        Ok(p) => p,
+        Err(e) => return die(format_args!("{e}")),
+    };
+    let socket = paths.socket_path();
+    match ipc_client::is_running(&socket).await {
+        Ok(false) => die(format_args!(
+            "daemon is not running; start it with `careerbot start-service`"
+        )),
+        Ok(true) => {
+            let path = match company.as_deref() {
+                Some(c) => format!("/run-now?company={c}"),
+                None => "/run-now".to_string(),
+            };
+            match ipc_client::request(&socket, "POST", &path, &[]).await {
+                Ok((202, _)) => {
+                    match company {
+                        Some(c) => println!("tick queued for {c}"),
+                        None => println!("tick queued for all companies"),
+                    }
+                    ExitCode::SUCCESS
+                }
+                Ok((404, _)) => {
+                    let name = company.unwrap_or_default();
+                    die(format_args!(
+                        "company {:?} is not registered (no scripts/{}.py)",
+                        name, name
+                    ))
+                }
+                Ok((status, body)) => die(format_args!("unexpected status: {} {}", status, body)),
+                Err(e) => die(format_args!("{e}")),
+            }
+        }
+        Err(e) => die(format_args!("{e}")),
+    }
+}
+
+async fn handle_status() -> ExitCode {
+    let paths = match Paths::from_env() {
+        Ok(p) => p,
+        Err(e) => return die(format_args!("{e}")),
+    };
+    let socket = paths.socket_path();
+    match ipc_client::is_running(&socket).await {
+        Ok(false) => {
+            println!("not running");
+            ExitCode::SUCCESS
+        }
+        Ok(true) => match ipc_client::request(&socket, "GET", "/status", &[]).await {
+            Ok((200, body)) => {
+                println!("{body}");
+                ExitCode::SUCCESS
+            }
+            Ok((status, body)) => die(format_args!("unexpected status: {} {}", status, body)),
+            Err(e) => die(format_args!("{e}")),
+        },
+        Err(e) => die(format_args!("{e}")),
     }
 }
 

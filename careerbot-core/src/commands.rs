@@ -9,6 +9,7 @@
 
 pub mod add_company;
 pub mod profile;
+pub mod remove_company;
 
 use crate::agent::AgentError;
 use crate::runtime::RuntimeError;
