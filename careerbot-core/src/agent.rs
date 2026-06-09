@@ -131,6 +131,29 @@ impl From<ToolError> for AgentError {
     }
 }
 
+/// A file the caller wants the agent to see alongside the prompt. The
+/// driver knows how to deliver it: the Anthropic driver base64-encodes
+/// the bytes and sends a `document` content block, the Claude Code
+/// driver passes `--add-dir` and lets claude open the path itself.
+#[derive(Debug, Clone)]
+pub struct Attachment {
+    pub path: PathBuf,
+    pub kind: AttachmentKind,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum AttachmentKind {
+    Pdf,
+}
+
+impl AttachmentKind {
+    pub fn media_type(self) -> &'static str {
+        match self {
+            Self::Pdf => "application/pdf",
+        }
+    }
+}
+
 /// The seam between the daemon and the LLM harness.
 #[async_trait]
 pub trait AgentDriver: Send + Sync {
@@ -141,6 +164,7 @@ pub trait AgentDriver: Send + Sync {
         tools: ToolKit,
         budget: Option<Budget>,
         purpose: &str,
+        attachments: &[Attachment],
     ) -> Result<AgentResult, AgentError>;
 
     fn capabilities(&self) -> Capabilities;

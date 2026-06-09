@@ -16,6 +16,7 @@ workspace = true
 [dependencies]
 async-trait = "0.1"
 axum = "0.8"
+base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
 futures-util = { version = "0.3", default-features = false }
 notify-rust = "4"

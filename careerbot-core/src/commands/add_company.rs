@@ -51,6 +51,7 @@ pub async fn add_company(
             toolkit,
             None,
             "script_gen",
+            &[],
         )
         .await?;
 
