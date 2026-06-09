@@ -24,7 +24,6 @@ const FALLBACK_PROTOCOL_VERSION: &str = "2024-11-05";
 const PARSE_ERROR: i64 = -32700;
 const INVALID_REQUEST: i64 = -32600;
 const METHOD_NOT_FOUND: i64 = -32601;
-const INTERNAL_ERROR: i64 = -32603;
 
 #[derive(Debug, Deserialize)]
 struct Request {
@@ -39,7 +38,7 @@ struct Request {
 }
 
 #[derive(Debug, Serialize)]
-struct Response {
+pub struct Response {
     jsonrpc: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     result: Option<Value>,
@@ -49,7 +48,7 @@ struct Response {
 }
 
 #[derive(Debug, Serialize)]
-struct RpcError {
+pub struct RpcError {
     code: i64,
     message: String,
 }

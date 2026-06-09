@@ -6,6 +6,7 @@
 //! drivers share.
 
 pub mod anthropic_api;
+pub mod claude_code;
 pub mod prompts;
 pub mod tool_dispatch;
 
