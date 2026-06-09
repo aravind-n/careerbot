@@ -157,9 +157,6 @@ impl AgentDriver for ClaudeCodeDriver {
     }
 }
 
-/// Build the MCP config the `claude` subprocess reads. It tells claude
-/// to spawn careerbot as an MCP server so the tool surface our agent
-/// expects is available inside its loop.
 /// Assemble the argv we hand to `claude`. For each attachment we add
 /// `--add-dir <parent>` so claude's Read tool can open the file; the
 /// caller is expected to have referenced the path inside `prompt`.
@@ -188,6 +185,9 @@ fn build_claude_args(
     args
 }
 
+/// Build the MCP config the `claude` subprocess reads. It tells claude
+/// to spawn careerbot as an MCP server so the tool surface our agent
+/// expects is available inside its loop.
 fn build_mcp_config(careerbot_bin: &Path) -> Value {
     json!({
         "mcpServers": {
@@ -334,9 +334,7 @@ mod tests {
         let dirs: Vec<&std::ffi::OsStr> = args
             .iter()
             .zip(args.iter().skip(1))
-            .filter_map(|(flag, val)| {
-                (flag.as_os_str() == "--add-dir").then_some(val.as_os_str())
-            })
+            .filter_map(|(flag, val)| (flag.as_os_str() == "--add-dir").then_some(val.as_os_str()))
             .collect();
         assert_eq!(
             dirs,

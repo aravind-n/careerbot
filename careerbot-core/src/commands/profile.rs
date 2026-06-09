@@ -1,7 +1,7 @@
 //! `careerbot profile` command family.
 
 use super::CommandError;
-use crate::agent::{Cost, ToolKit, prompts};
+use crate::agent::{Attachment, AttachmentKind, Cost, ToolKit, prompts};
 use crate::runtime::Runtime;
 use crate::tools::ToolError;
 use std::path::{Path, PathBuf};
@@ -35,28 +35,46 @@ pub struct FromResumeOutput {
     pub cost: Option<Cost>,
 }
 
-/// Read the resume at `path` (text or markdown only) and run the
-/// `profile_init` agent. The agent is expected to call `write_profile`,
-/// so on success `profile.md` is already on disk.
+/// Read the resume at `path` and run the `profile_init` agent. PDFs go
+/// to the LLM as a native attachment (Anthropic `document` block /
+/// Claude Code `--add-dir`); text/markdown is included inline. The
+/// agent is expected to call `write_profile`, so on success
+/// `profile.md` is already on disk.
 pub async fn from_resume(rt: &Runtime, path: &Path) -> Result<FromResumeOutput, CommandError> {
-    let resume = std::fs::read_to_string(path).map_err(|e| {
-        if e.kind() == std::io::ErrorKind::NotFound {
-            CommandError::NotFound {
-                what: format!("resume file {}", path.display()),
+    if !path.exists() {
+        return Err(CommandError::NotFound {
+            what: format!("resume file {}", path.display()),
+        });
+    }
+
+    let (prompt, attachments) = if is_pdf(path) {
+        let prompt = format!(
+            "The user's resume is the attached PDF (located at `{}`). \
+             Read it and produce a profile.md via write_profile.",
+            path.display()
+        );
+        let attachment = Attachment {
+            path: path.to_path_buf(),
+            kind: AttachmentKind::Pdf,
+        };
+        (prompt, vec![attachment])
+    } else {
+        let resume = std::fs::read_to_string(path).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::InvalidData {
+                CommandError::InvalidInput(format!(
+                    "resume file {} is not valid UTF-8; supported formats: \
+                     .txt, .md, .pdf",
+                    path.display()
+                ))
+            } else {
+                CommandError::Io(e)
             }
-        } else if e.kind() == std::io::ErrorKind::InvalidData {
-            CommandError::InvalidInput(format!(
-                "resume file {} is not valid UTF-8 — PDF and binary formats are not yet supported",
-                path.display()
-            ))
-        } else {
-            CommandError::Io(e)
-        }
-    })?;
+        })?;
+        (format!("Resume contents:\n\n{resume}"), Vec::new())
+    };
 
     let driver = rt.build_driver()?;
     let toolkit = ToolKit::in_process(rt.tools.clone());
-    let prompt = format!("Resume contents:\n\n{resume}");
     let result = driver
         .run(
             prompt,
@@ -64,7 +82,7 @@ pub async fn from_resume(rt: &Runtime, path: &Path) -> Result<FromResumeOutput, 
             toolkit,
             None,
             "profile_init",
-            &[],
+            &attachments,
         )
         .await?;
 
@@ -73,6 +91,12 @@ pub async fn from_resume(rt: &Runtime, path: &Path) -> Result<FromResumeOutput, 
         tool_calls: result.tool_calls.len(),
         cost: result.cost,
     })
+}
+
+fn is_pdf(path: &Path) -> bool {
+    path.extension()
+        .and_then(|s| s.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("pdf"))
 }
 
 #[cfg(test)]
@@ -186,17 +210,52 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn from_resume_reports_non_utf8_resume() {
+    async fn from_resume_reports_non_utf8_non_pdf_resume() {
         let (dir, rt, _server) = rooted_with_mock().await;
-        let resume = dir.path().join("resume.pdf");
-        // PDF magic + binary noise — invalid UTF-8.
-        std::fs::write(&resume, [0x25, 0x50, 0x44, 0x46, 0xC0, 0xC1, 0xFF, 0xFE]).unwrap();
+        // Non-PDF binary file (e.g. someone pointed at a .docx).
+        let resume = dir.path().join("resume.docx");
+        std::fs::write(&resume, [0xC0, 0xC1, 0xFF, 0xFE]).unwrap();
         let Err(err) = from_resume(&rt, &resume).await else {
             panic!("expected InvalidInput");
         };
-        match err {
-            CommandError::InvalidInput(m) => assert!(m.contains("PDF")),
-            other => panic!("expected InvalidInput, got {other:?}"),
-        }
+        assert!(matches!(err, CommandError::InvalidInput(_)));
+    }
+
+    #[tokio::test]
+    async fn from_resume_with_pdf_attaches_the_file() {
+        let (dir, rt, server) = rooted_with_mock().await;
+        let pdf = dir.path().join("resume.pdf");
+        std::fs::write(&pdf, b"%PDF-1.4\nstub").unwrap();
+
+        // The driver should send a document content block carrying the
+        // base64-encoded PDF bytes.
+        Mock::given(method("POST"))
+            .and(wpath("/v1/messages"))
+            .and(body_string_contains("\"type\":\"document\""))
+            .and(body_string_contains("\"media_type\":\"application/pdf\""))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "content": [{
+                    "type": "tool_use", "id": "tu1", "name": "write_profile",
+                    "input": {"content": "# Profile\n"}
+                }],
+                "usage": {"input_tokens": 100, "output_tokens": 5}
+            })))
+            .up_to_n_times(1)
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(wpath("/v1/messages"))
+            .and(body_string_contains("tool_result"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "content": [{"type": "text", "text": "saved"}],
+                "usage": {"input_tokens": 20, "output_tokens": 1}
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let out = from_resume(&rt, &pdf).await.unwrap();
+        assert_eq!(out.text, "saved");
     }
 }

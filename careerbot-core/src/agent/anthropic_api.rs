@@ -10,8 +10,8 @@
 
 use super::tool_dispatch::{all_tools, dispatch_tool, to_anthropic_tools};
 use super::{
-    AgentDriver, AgentError, AgentResult, Attachment, Budget, Capabilities, Cost,
-    ToolCallSummary, ToolKit,
+    AgentDriver, AgentError, AgentResult, Attachment, Budget, Capabilities, Cost, ToolCallSummary,
+    ToolKit,
 };
 use crate::tools::{ToolError, default_http_client};
 use crate::types::TokenUsage;
@@ -220,8 +220,7 @@ fn build_user_content(prompt: &str, attachments: &[Attachment]) -> Result<Value,
     }
     let mut blocks: Vec<Value> = Vec::with_capacity(attachments.len() + 1);
     for att in attachments {
-        let bytes =
-            std::fs::read(&att.path).map_err(|e| AgentError::Tool(ToolError::Io(e)))?;
+        let bytes = std::fs::read(&att.path).map_err(|e| AgentError::Tool(ToolError::Io(e)))?;
         blocks.push(json!({
             "type": "document",
             "source": {
@@ -295,7 +294,14 @@ mod tests {
 
         let (_dir, kit) = toolkit().await;
         let result = driver(&server)
-            .run("hi".into(), "be terse".into(), kit.clone(), None, "test", &[])
+            .run(
+                "hi".into(),
+                "be terse".into(),
+                kit.clone(),
+                None,
+                "test",
+                &[],
+            )
             .await
             .expect("ok");
         assert_eq!(result.text, "hello");
@@ -471,7 +477,7 @@ mod tests {
             .and(path("/v1/messages"))
             .and(body_string_contains("\"type\":\"document\""))
             .and(body_string_contains("\"media_type\":\"application/pdf\""))
-            .and(body_string_contains(&BASE64.encode(b"%PDF-1.4\nstub")))
+            .and(body_string_contains(BASE64.encode(b"%PDF-1.4\nstub")))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "content": [{"type": "text", "text": "ok"}],
                 "usage": {"input_tokens": 1, "output_tokens": 1}
