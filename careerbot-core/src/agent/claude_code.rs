@@ -6,9 +6,7 @@
 //! over MCP stdio, the assistant's final text comes back to us as the
 //! `result` field of `--output-format json`.
 
-use super::{
-    AgentDriver, AgentError, AgentResult, Budget, Capabilities, Cost, ToolKit,
-};
+use super::{AgentDriver, AgentError, AgentResult, Budget, Capabilities, Cost, ToolKit};
 use crate::tools::ToolError;
 use crate::types::TokenUsage;
 use async_trait::async_trait;
@@ -68,8 +66,8 @@ impl ClaudeCodeDriver {
             )));
         }
 
-        let careerbot_bin = std::env::current_exe()
-            .map_err(|e| ClaudeCodeError::SelfPathUnknown(e.to_string()))?;
+        let careerbot_bin =
+            std::env::current_exe().map_err(|e| ClaudeCodeError::SelfPathUnknown(e.to_string()))?;
         Ok(Self {
             claude_bin: PathBuf::from("claude"),
             careerbot_bin,
@@ -190,12 +188,7 @@ struct ClaudeUsage {
     output_tokens: u64,
 }
 
-async fn record_usage_best_effort(
-    toolkit: &ToolKit,
-    purpose: &str,
-    input: u64,
-    output: u64,
-) {
+async fn record_usage_best_effort(toolkit: &ToolKit, purpose: &str, input: u64, output: u64) {
     if input == 0 && output == 0 {
         return;
     }
@@ -268,7 +261,8 @@ mod tests {
 
     #[test]
     fn parse_error_result_surfaces_is_error_flag() {
-        let raw = r#"{"is_error":true,"result":"oops","usage":{"input_tokens":1,"output_tokens":0}}"#;
+        let raw =
+            r#"{"is_error":true,"result":"oops","usage":{"input_tokens":1,"output_tokens":0}}"#;
         let r: ClaudeResult = serde_json::from_str(raw).unwrap();
         assert!(r.is_error);
         assert_eq!(r.result, "oops");

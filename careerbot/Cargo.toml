@@ -9,6 +9,10 @@ rust-version.workspace = true
 name = "careerbot"
 path = "src/main.rs"
 
+[lints.clippy]
+cargo = "warn"
+pedantic = "warn"
+
 [dependencies]
 careerbot-core.workspace = true
 clap = { version = "4", features = ["derive"] }

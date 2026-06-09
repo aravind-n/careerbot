@@ -87,8 +87,7 @@ impl Config {
 
     /// Insert or overwrite the value at `key`, creating intermediate tables.
     pub fn set(&mut self, key: &str, value: toml::Value) -> Result<(), ConfigError> {
-        let parts =
-            split_key(key).ok_or_else(|| ConfigError::InvalidKey(key.to_string()))?;
+        let parts = split_key(key).ok_or_else(|| ConfigError::InvalidKey(key.to_string()))?;
         let (last, prefix) = parts
             .split_last()
             .ok_or_else(|| ConfigError::InvalidKey(key.to_string()))?;
@@ -106,7 +105,11 @@ impl Config {
                 .or_insert_with(|| toml::Value::Table(toml::Table::new()));
             match entry {
                 toml::Value::Table(t) => table = t,
-                _ => return Err(ConfigError::NotATable { key: walked.clone() }),
+                _ => {
+                    return Err(ConfigError::NotATable {
+                        key: walked.clone(),
+                    });
+                }
             }
         }
         table.insert((*last).to_string(), value);
@@ -327,7 +330,10 @@ mod tests {
         c.save().unwrap();
 
         let reloaded = Config::load(&path).unwrap();
-        assert_eq!(reloaded.get("service.port"), Some(toml::Value::Integer(7724)));
+        assert_eq!(
+            reloaded.get("service.port"),
+            Some(toml::Value::Integer(7724))
+        );
         assert_eq!(
             reloaded.get("agent.driver"),
             Some(toml::Value::String("claude_code".into()))

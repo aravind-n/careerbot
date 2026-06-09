@@ -92,14 +92,8 @@ impl AgentDriver for AnthropicApiDriver {
             let status = resp.status();
             if !status.is_success() {
                 let body_text = resp.text().await.unwrap_or_default();
-                record_usage_best_effort(
-                    &tools,
-                    &self.model,
-                    purpose,
-                    total_input,
-                    total_output,
-                )
-                .await;
+                record_usage_best_effort(&tools, &self.model, purpose, total_input, total_output)
+                    .await;
                 return Err(AgentError::Api {
                     status: status.as_u16(),
                     body: body_text,
@@ -124,7 +118,11 @@ impl AgentDriver for AnthropicApiDriver {
                         tool_calls.push(ToolCallSummary {
                             tool: name.clone(),
                             success: !is_error,
-                            error: if is_error { Some(content.clone()) } else { None },
+                            error: if is_error {
+                                Some(content.clone())
+                            } else {
+                                None
+                            },
                         });
                         tool_results.push(json!({
                             "type": "tool_result",
@@ -144,14 +142,8 @@ impl AgentDriver for AnthropicApiDriver {
             }));
 
             if tool_results.is_empty() {
-                record_usage_best_effort(
-                    &tools,
-                    &self.model,
-                    purpose,
-                    total_input,
-                    total_output,
-                )
-                .await;
+                record_usage_best_effort(&tools, &self.model, purpose, total_input, total_output)
+                    .await;
                 return Ok(AgentResult {
                     text: last_text,
                     tool_calls,
@@ -249,8 +241,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let paths = Paths::rooted_at(dir.path().join("data"), dir.path().join("state"));
         let pool = Arc::new(db::open_memory().await.unwrap());
-        let tools =
-            CoreTools::with_script_runner(pool, paths, vec!["python3".into()]);
+        let tools = CoreTools::with_script_runner(pool, paths, vec!["python3".into()]);
         (dir, ToolKit::in_process(Arc::new(tools)))
     }
 
@@ -273,13 +264,7 @@ mod tests {
 
         let (_dir, kit) = toolkit().await;
         let result = driver(&server)
-            .run(
-                "hi".into(),
-                "be terse".into(),
-                kit.clone(),
-                None,
-                "test",
-            )
+            .run("hi".into(), "be terse".into(), kit.clone(), None, "test")
             .await
             .expect("ok");
         assert_eq!(result.text, "hello");
@@ -364,13 +349,7 @@ mod tests {
 
         let (_dir, kit) = toolkit().await;
         let err = driver(&server)
-            .run(
-                "p".into(),
-                "s".into(),
-                kit,
-                None,
-                "test",
-            )
+            .run("p".into(), "s".into(), kit, None, "test")
             .await
             .unwrap_err();
         match err {
@@ -406,13 +385,7 @@ mod tests {
             max_output_tokens: 1024,
         };
         let err = driver(&server)
-            .run(
-                "p".into(),
-                "s".into(),
-                kit,
-                Some(budget),
-                "test",
-            )
+            .run("p".into(), "s".into(), kit, Some(budget), "test")
             .await
             .unwrap_err();
         assert!(matches!(err, AgentError::LoopExhausted { iterations: 3 }));
@@ -449,13 +422,7 @@ mod tests {
 
         let (_dir, kit) = toolkit().await;
         let result = driver(&server)
-            .run(
-                "prompt-text".into(),
-                "s".into(),
-                kit,
-                None,
-                "test",
-            )
+            .run("prompt-text".into(), "s".into(), kit, None, "test")
             .await
             .expect("ok");
         assert_eq!(result.text, "oops");

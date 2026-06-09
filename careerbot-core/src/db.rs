@@ -88,7 +88,10 @@ mod tests {
         )
         .execute(&pool)
         .await;
-        assert!(dup.is_err(), "duplicate (company_tag, external_id) must fail");
+        assert!(
+            dup.is_err(),
+            "duplicate (company_tag, external_id) must fail"
+        );
     }
 
     #[tokio::test]
@@ -129,11 +132,10 @@ mod tests {
         let pool = open(&path).await.expect("open on-disk db");
         assert!(path.exists());
 
-        let (n,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM company_state")
-                .fetch_one(&pool)
-                .await
-                .unwrap();
+        let (n,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM company_state")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
         assert_eq!(n, 0);
     }
 }

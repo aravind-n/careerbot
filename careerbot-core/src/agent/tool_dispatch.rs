@@ -41,8 +41,7 @@ pub fn all_tools() -> Vec<ToolSchema> {
         },
         ToolSchema {
             name: "save_script",
-            description:
-                "Write a per-company Python collector script to the scripts directory.",
+            description: "Write a per-company Python collector script to the scripts directory.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -54,8 +53,7 @@ pub fn all_tools() -> Vec<ToolSchema> {
         },
         ToolSchema {
             name: "run_script",
-            description:
-                "Execute the per-company script via `uv run`. Returns the parsed list of jobs as JSON.",
+            description: "Execute the per-company script via `uv run`. Returns the parsed list of jobs as JSON.",
             input_schema: json!({
                 "type": "object",
                 "properties": {"company": {"type": "string"}},
@@ -78,8 +76,7 @@ pub fn all_tools() -> Vec<ToolSchema> {
         },
         ToolSchema {
             name: "read_filters",
-            description:
-                "Read filters.json. Returns an empty filters object if the file does not exist.",
+            description: "Read filters.json. Returns an empty filters object if the file does not exist.",
             input_schema: json!({"type": "object", "properties": {}}),
         },
         ToolSchema {
@@ -144,24 +141,19 @@ pub fn to_mcp_tools(tools: &[ToolSchema]) -> Vec<Value> {
 /// result on success or an error message on failure; in both cases
 /// the value is suitable for echoing back to the LLM as a
 /// `tool_result` or MCP `tools/call` payload.
-pub async fn dispatch_tool(
-    toolkit: &ToolKit,
-    name: &str,
-    input: &Value,
-) -> Result<String, String> {
+pub async fn dispatch_tool(toolkit: &ToolKit, name: &str, input: &Value) -> Result<String, String> {
     let core = &toolkit.core;
     match name {
         "fetch_url" => {
             let url = string_field(input, "url")?;
-            let headers = input
-                .get("headers")
-                .and_then(|v| v.as_object())
-                .map(|m| {
-                    m.iter()
-                        .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
-                        .collect()
-                });
-            core.fetch_url(url, headers).await.map_err(|e| e.to_string())
+            let headers = input.get("headers").and_then(|v| v.as_object()).map(|m| {
+                m.iter()
+                    .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                    .collect()
+            });
+            core.fetch_url(url, headers)
+                .await
+                .map_err(|e| e.to_string())
         }
         "save_script" => {
             let company = string_field(input, "company")?;
@@ -198,10 +190,7 @@ pub async fn dispatch_tool(
         }
         "list_known_jobs" => {
             let company = string_field(input, "company")?;
-            let limit = input
-                .get("limit")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(10) as usize;
+            let limit = input.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
             let jobs = core
                 .list_known_jobs(company, limit)
                 .await

@@ -165,9 +165,10 @@ impl CoreTools {
     pub async fn run_script(&self, company: &str) -> Result<Vec<RawJob>, ToolError> {
         validate_company(company)?;
         let path = self.paths.scripts_dir().join(format!("{}.py", company));
-        let (program, args) = self.script_runner.split_first().expect(
-            "script_runner is enforced non-empty in CoreTools::with_script_runner",
-        );
+        let (program, args) = self
+            .script_runner
+            .split_first()
+            .expect("script_runner is enforced non-empty in CoreTools::with_script_runner");
 
         let fut = Command::new(program)
             .args(args)
@@ -236,11 +237,7 @@ impl CoreTools {
     }
 
     /// Insert one row into the `runs` audit table.
-    pub async fn record_run(
-        &self,
-        company: &str,
-        result: RunResult,
-    ) -> Result<(), ToolError> {
+    pub async fn record_run(&self, company: &str, result: RunResult) -> Result<(), ToolError> {
         sqlx::query(
             "INSERT INTO runs \
              (company_tag, started_at, finished_at, exit_code, new_job_count, stderr_tail, error) \
@@ -404,8 +401,7 @@ mod tests {
         let paths = Paths::rooted_at(dir.path().join("data"), dir.path().join("state"));
         let pool = Arc::new(db::open_memory().await.unwrap());
         // Tests use `python3` so they don't depend on uv being installed.
-        let tools =
-            CoreTools::with_script_runner(pool, paths, vec!["python3".into()]);
+        let tools = CoreTools::with_script_runner(pool, paths, vec!["python3".into()]);
         (dir, tools)
     }
 
@@ -446,10 +442,7 @@ mod tests {
     #[tokio::test]
     async fn save_script_writes_under_scripts_dir() {
         let (_dir, tools) = setup().await;
-        tools
-            .save_script("microsoft", "print('hi')")
-            .await
-            .unwrap();
+        tools.save_script("microsoft", "print('hi')").await.unwrap();
         let path = tools.paths().scripts_dir().join("microsoft.py");
         assert_eq!(std::fs::read_to_string(path).unwrap(), "print('hi')");
     }
@@ -608,12 +601,11 @@ print(json.dumps({"external_id": "2", "title": "PM", "url": "https://y", "locati
             })
             .await
             .unwrap();
-        let (n,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM token_usage WHERE purpose = ?")
-                .bind("profile_init")
-                .fetch_one(tools.db())
-                .await
-                .unwrap();
+        let (n,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM token_usage WHERE purpose = ?")
+            .bind("profile_init")
+            .fetch_one(tools.db())
+            .await
+            .unwrap();
         assert_eq!(n, 1);
     }
 }
