@@ -8,11 +8,12 @@
 //! results back as the next user turn. When a response contains no
 //! `tool_use` blocks the loop ends.
 
+use super::tool_dispatch::{all_tools, dispatch_tool, to_anthropic_tools};
 use super::{
     AgentDriver, AgentError, AgentResult, Budget, Capabilities, Cost, ToolCallSummary, ToolKit,
 };
 use crate::tools::default_http_client;
-use crate::types::{Filters, TokenUsage};
+use crate::types::TokenUsage;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -61,7 +62,7 @@ impl AgentDriver for AnthropicApiDriver {
         purpose: &str,
     ) -> Result<AgentResult, AgentError> {
         let budget = budget.unwrap_or_default();
-        let tool_defs = tool_definitions();
+        let tool_defs = to_anthropic_tools(&all_tools());
         let mut messages: Vec<Value> = vec![json!({"role": "user", "content": prompt})];
 
         let mut total_input: u64 = 0;
@@ -209,168 +210,6 @@ struct Usage {
     input_tokens: u64,
     #[serde(default)]
     output_tokens: u64,
-}
-
-fn tool_definitions() -> Vec<Value> {
-    vec![
-        json!({
-            "name": "fetch_url",
-            "description": "HTTP GET against a URL. Returns the response body as text.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "url": {"type": "string"},
-                    "headers": {
-                        "type": "object",
-                        "additionalProperties": {"type": "string"}
-                    }
-                },
-                "required": ["url"]
-            }
-        }),
-        json!({
-            "name": "save_script",
-            "description": "Write a per-company Python collector script to the scripts directory.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "company": {"type": "string"},
-                    "code": {"type": "string"}
-                },
-                "required": ["company", "code"]
-            }
-        }),
-        json!({
-            "name": "run_script",
-            "description": "Execute the per-company script via `uv run`. Returns the parsed list of jobs as JSON.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "company": {"type": "string"}
-                },
-                "required": ["company"]
-            }
-        }),
-        json!({
-            "name": "read_profile",
-            "description": "Read the current profile.md.",
-            "input_schema": {"type": "object", "properties": {}}
-        }),
-        json!({
-            "name": "write_profile",
-            "description": "Overwrite profile.md with the given markdown.",
-            "input_schema": {
-                "type": "object",
-                "properties": {"content": {"type": "string"}},
-                "required": ["content"]
-            }
-        }),
-        json!({
-            "name": "read_filters",
-            "description": "Read filters.json. Returns an empty filters object if the file does not exist.",
-            "input_schema": {"type": "object", "properties": {}}
-        }),
-        json!({
-            "name": "write_filters",
-            "description": "Overwrite filters.json. Accepts the full Filters object.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "title_deny": {"type": "array", "items": {"type": "string"}},
-                    "location_allow_countries": {"type": "array", "items": {"type": "string"}},
-                    "require_remote_or_locations": {"type": "array", "items": {"type": "string"}},
-                    "clearance_deny": {"type": "array", "items": {"type": "string"}}
-                }
-            }
-        }),
-        json!({
-            "name": "list_known_jobs",
-            "description": "Recent jobs already recorded for a company, newest first.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "company": {"type": "string"},
-                    "limit": {"type": "integer", "minimum": 1, "maximum": 100}
-                },
-                "required": ["company"]
-            }
-        }),
-    ]
-}
-
-async fn dispatch_tool(
-    toolkit: &ToolKit,
-    name: &str,
-    input: &Value,
-) -> Result<String, String> {
-    let core = &toolkit.core;
-    match name {
-        "fetch_url" => {
-            let url = string_field(input, "url")?;
-            let headers = input
-                .get("headers")
-                .and_then(|v| v.as_object())
-                .map(|m| {
-                    m.iter()
-                        .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
-                        .collect()
-                });
-            core.fetch_url(url, headers).await.map_err(|e| e.to_string())
-        }
-        "save_script" => {
-            let company = string_field(input, "company")?;
-            let code = string_field(input, "code")?;
-            core.save_script(company, code)
-                .await
-                .map(|_| "saved".to_string())
-                .map_err(|e| e.to_string())
-        }
-        "run_script" => {
-            let company = string_field(input, "company")?;
-            let jobs = core.run_script(company).await.map_err(|e| e.to_string())?;
-            serde_json::to_string(&jobs).map_err(|e| e.to_string())
-        }
-        "read_profile" => core.read_profile().await.map_err(|e| e.to_string()),
-        "write_profile" => {
-            let content = string_field(input, "content")?;
-            core.write_profile(content)
-                .await
-                .map(|_| "written".to_string())
-                .map_err(|e| e.to_string())
-        }
-        "read_filters" => {
-            let f = core.read_filters().await.map_err(|e| e.to_string())?;
-            serde_json::to_string(&f).map_err(|e| e.to_string())
-        }
-        "write_filters" => {
-            let filters: Filters =
-                serde_json::from_value(input.clone()).map_err(|e| e.to_string())?;
-            core.write_filters(&filters)
-                .await
-                .map(|_| "written".to_string())
-                .map_err(|e| e.to_string())
-        }
-        "list_known_jobs" => {
-            let company = string_field(input, "company")?;
-            let limit = input
-                .get("limit")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(10) as usize;
-            let jobs = core
-                .list_known_jobs(company, limit)
-                .await
-                .map_err(|e| e.to_string())?;
-            serde_json::to_string(&jobs).map_err(|e| e.to_string())
-        }
-        other => Err(format!("unknown tool: {other}")),
-    }
-}
-
-fn string_field<'a>(input: &'a Value, key: &str) -> Result<&'a str, String> {
-    input
-        .get(key)
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| format!("missing or non-string field {:?}", key))
 }
 
 async fn record_usage_best_effort(

@@ -10,6 +10,7 @@
 
 use crate::agent::AgentDriver;
 use crate::agent::anthropic_api::AnthropicApiDriver;
+use crate::agent::claude_code::ClaudeCodeDriver;
 use crate::config::{Config, ConfigError};
 use crate::db;
 use crate::paths::Paths;
@@ -29,6 +30,7 @@ pub enum RuntimeError {
     Db(sqlx::Error),
     MissingConfig { key: &'static str, hint: &'static str },
     UnsupportedDriver(String),
+    DriverInit { driver: &'static str, reason: String },
 }
 
 impl std::fmt::Display for RuntimeError {
@@ -41,6 +43,9 @@ impl std::fmt::Display for RuntimeError {
                 write!(f, "missing config key {:?}; {}", key, hint)
             }
             Self::UnsupportedDriver(s) => write!(f, "unsupported agent.driver: {:?}", s),
+            Self::DriverInit { driver, reason } => {
+                write!(f, "failed to initialize agent.driver = {driver:?}: {reason}")
+            }
         }
     }
 }
@@ -94,8 +99,8 @@ impl Runtime {
             string_config(&self.config, "agent.driver").ok_or(RuntimeError::MissingConfig {
                 key: "agent.driver",
                 hint:
-                    "run `careerbot config agent.driver anthropic_api` (only \
-                     anthropic_api is implemented in this phase)",
+                    "run `careerbot config agent.driver anthropic_api` \
+                     (or `claude_code` if Claude Code is installed)",
             })?;
 
         match driver_name.as_str() {
@@ -115,6 +120,13 @@ impl Runtime {
                 {
                     driver = driver.with_base_url(base_url);
                 }
+                Ok(Box::new(driver))
+            }
+            "claude_code" => {
+                let driver = ClaudeCodeDriver::new().map_err(|e| RuntimeError::DriverInit {
+                    driver: "claude_code",
+                    reason: e.to_string(),
+                })?;
                 Ok(Box::new(driver))
             }
             other => Err(RuntimeError::UnsupportedDriver(other.to_string())),
