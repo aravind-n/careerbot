@@ -88,9 +88,6 @@ impl AgentDriver for ClaudeCodeDriver {
         purpose: &str,
         attachments: &[Attachment],
     ) -> Result<AgentResult, AgentError> {
-        // Used in the next commit; placeholder here so the trait
-        // signatures match.
-        let _ = attachments;
         let mcp_config = build_mcp_config(&self.careerbot_bin);
         let temp = tempfile::Builder::new()
             .prefix("careerbot-mcp-")
@@ -100,15 +97,9 @@ impl AgentDriver for ClaudeCodeDriver {
         std::fs::write(temp.path(), mcp_config.to_string())
             .map_err(|e| AgentError::Tool(ToolError::Io(e)))?;
 
+        let args = build_claude_args(&prompt, &system, temp.path(), attachments);
         let output = Command::new(&self.claude_bin)
-            .arg("-p")
-            .arg(&prompt)
-            .arg("--append-system-prompt")
-            .arg(&system)
-            .arg("--mcp-config")
-            .arg(temp.path())
-            .arg("--output-format")
-            .arg("json")
+            .args(&args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .output()
@@ -169,6 +160,34 @@ impl AgentDriver for ClaudeCodeDriver {
 /// Build the MCP config the `claude` subprocess reads. It tells claude
 /// to spawn careerbot as an MCP server so the tool surface our agent
 /// expects is available inside its loop.
+/// Assemble the argv we hand to `claude`. For each attachment we add
+/// `--add-dir <parent>` so claude's Read tool can open the file; the
+/// caller is expected to have referenced the path inside `prompt`.
+fn build_claude_args(
+    prompt: &str,
+    system: &str,
+    mcp_config: &Path,
+    attachments: &[Attachment],
+) -> Vec<std::ffi::OsString> {
+    use std::ffi::OsString;
+    let mut args: Vec<OsString> = Vec::with_capacity(8 + attachments.len() * 2);
+    args.push("-p".into());
+    args.push(prompt.into());
+    args.push("--append-system-prompt".into());
+    args.push(system.into());
+    args.push("--mcp-config".into());
+    args.push(mcp_config.into());
+    args.push("--output-format".into());
+    args.push("json".into());
+    for att in attachments {
+        if let Some(parent) = att.path.parent() {
+            args.push("--add-dir".into());
+            args.push(parent.into());
+        }
+    }
+    args
+}
+
 fn build_mcp_config(careerbot_bin: &Path) -> Value {
     json!({
         "mcpServers": {
@@ -276,5 +295,61 @@ mod tests {
         let r: ClaudeResult = serde_json::from_str(raw).unwrap();
         assert!(r.is_error);
         assert_eq!(r.result, "oops");
+    }
+
+    #[test]
+    fn build_claude_args_adds_one_dir_per_attachment_parent() {
+        use super::super::AttachmentKind;
+        use std::ffi::OsString;
+
+        let attachments = [
+            Attachment {
+                path: PathBuf::from("/tmp/resumes/me.pdf"),
+                kind: AttachmentKind::Pdf,
+            },
+            Attachment {
+                path: PathBuf::from("/var/data/another.pdf"),
+                kind: AttachmentKind::Pdf,
+            },
+        ];
+        let args = build_claude_args(
+            "ingest the resume",
+            "you are a careerbot agent",
+            Path::new("/tmp/mcp.json"),
+            &attachments,
+        );
+
+        assert!(args.starts_with(&[
+            OsString::from("-p"),
+            OsString::from("ingest the resume"),
+            OsString::from("--append-system-prompt"),
+            OsString::from("you are a careerbot agent"),
+            OsString::from("--mcp-config"),
+            OsString::from("/tmp/mcp.json"),
+            OsString::from("--output-format"),
+            OsString::from("json"),
+        ]));
+
+        // Two --add-dir entries, in input order.
+        let dirs: Vec<&std::ffi::OsStr> = args
+            .iter()
+            .zip(args.iter().skip(1))
+            .filter_map(|(flag, val)| {
+                (flag.as_os_str() == "--add-dir").then_some(val.as_os_str())
+            })
+            .collect();
+        assert_eq!(
+            dirs,
+            vec![
+                std::ffi::OsStr::new("/tmp/resumes"),
+                std::ffi::OsStr::new("/var/data"),
+            ]
+        );
+    }
+
+    #[test]
+    fn build_claude_args_emits_no_add_dir_when_no_attachments() {
+        let args = build_claude_args("p", "s", Path::new("/x.json"), &[]);
+        assert!(!args.iter().any(|a| a == "--add-dir"));
     }
 }
