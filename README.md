@@ -22,11 +22,13 @@ cadence with jitter, dedups against the SQLite jobs table, and fires
 an OS-native notification per company-tick when there are new matches.
 Agent-driven commands round out the loop: `careerbot profile
 --from-resume <path>` and `careerbot add-company <name> [url]` go
-through the Anthropic `/v1/messages` driver (`agent.driver =
-anthropic_api` + an API key in config). Inventory commands
+through one of two drivers — `agent.driver = anthropic_api` (Anthropic
+API key in config) or `agent.driver = claude_code` (spawns the user's
+locally-installed `claude` CLI and exposes careerbot's tools to it
+through `careerbot mcp-server` over MCP stdio). Inventory commands
 `list-companies` and `remove-company` round out the deterministic
-surface. The MCP server and Claude Code driver are still pending. The
-prior multi-tenant SaaS implementation lives on the `legacy-saas` tag.
+surface. The prior multi-tenant SaaS implementation lives on the
+`legacy-saas` tag.
 
 ## Layout
 
