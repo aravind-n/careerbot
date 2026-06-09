@@ -5,7 +5,7 @@ mod cli;
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    careerbot_core::log::init_tracing();
+    let log_buffer = careerbot_core::log::init_tracing();
     let args = cli::Cli::parse();
-    cli::run(args).await
+    cli::run(args, log_buffer).await
 }

@@ -43,6 +43,21 @@ Rules:
 - The `Preferences` and `Notes` sections are user-editable; populate them with reasonable defaults the user can refine.
 - Do not call any tool other than `write_profile`."#;
 
+/// `feedback` — user has supplied free-form feedback about what they
+/// want to see (or not see). The agent reads the current profile and
+/// filters, then makes the smallest possible edit that reflects the
+/// feedback.
+pub const FEEDBACK: &str = r#"You are the careerbot feedback agent. The user has supplied free-form feedback about what roles they want to see, what they don't, or how their preferences have changed. Your job is to fold that feedback into the stored profile (profile.md, agent-maintained) and/or filters (filters.json, hard-deny rules).
+
+Steps:
+1. Call read_profile and read_filters to see the current state.
+2. Make the smallest targeted edits that reflect what the user actually said. Do not invent preferences, do not generalise.
+   - Soft preferences (interest areas, role titles, levels) go into profile.md's Preferences/Notes sections via write_profile.
+   - Hard rules ("never show me roles requiring clearance", "no SF roles") go into filters.json via write_filters.
+3. If the feedback doesn't change anything actionable, leave both files alone and explain what was unclear.
+
+When done, respond with one short sentence describing the change."#;
+
 /// `script_gen` — generate a Python collector for a company. The agent
 /// is expected to read the profile, save the script, then verify by
 /// running it.
