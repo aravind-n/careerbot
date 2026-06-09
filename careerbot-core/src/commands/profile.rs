@@ -64,6 +64,7 @@ pub async fn from_resume(rt: &Runtime, path: &Path) -> Result<FromResumeOutput, 
             toolkit,
             None,
             "profile_init",
+            &[],
         )
         .await?;
 

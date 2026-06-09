@@ -30,6 +30,7 @@ pub async fn send(rt: &Runtime, text: &str) -> Result<FeedbackOutput, CommandErr
             toolkit,
             None,
             "feedback",
+            &[],
         )
         .await?;
 

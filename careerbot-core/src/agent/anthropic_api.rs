@@ -10,11 +10,14 @@
 
 use super::tool_dispatch::{all_tools, dispatch_tool, to_anthropic_tools};
 use super::{
-    AgentDriver, AgentError, AgentResult, Budget, Capabilities, Cost, ToolCallSummary, ToolKit,
+    AgentDriver, AgentError, AgentResult, Attachment, Budget, Capabilities, Cost,
+    ToolCallSummary, ToolKit,
 };
-use crate::tools::default_http_client;
+use crate::tools::{ToolError, default_http_client};
 use crate::types::TokenUsage;
 use async_trait::async_trait;
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -62,10 +65,12 @@ impl AgentDriver for AnthropicApiDriver {
         tools: ToolKit,
         budget: Option<Budget>,
         purpose: &str,
+        attachments: &[Attachment],
     ) -> Result<AgentResult, AgentError> {
         let budget = budget.unwrap_or_default();
         let tool_defs = to_anthropic_tools(&all_tools());
-        let mut messages: Vec<Value> = vec![json!({"role": "user", "content": prompt})];
+        let initial_content = build_user_content(&prompt, attachments)?;
+        let mut messages: Vec<Value> = vec![json!({"role": "user", "content": initial_content})];
 
         let mut total_input: u64 = 0;
         let mut total_output: u64 = 0;
@@ -206,6 +211,30 @@ struct Usage {
     output_tokens: u64,
 }
 
+/// Build the initial user-message content. With no attachments, this
+/// is just a plain string (Anthropic accepts either shape); with
+/// attachments, we have to use the block array form.
+fn build_user_content(prompt: &str, attachments: &[Attachment]) -> Result<Value, AgentError> {
+    if attachments.is_empty() {
+        return Ok(Value::String(prompt.to_string()));
+    }
+    let mut blocks: Vec<Value> = Vec::with_capacity(attachments.len() + 1);
+    for att in attachments {
+        let bytes =
+            std::fs::read(&att.path).map_err(|e| AgentError::Tool(ToolError::Io(e)))?;
+        blocks.push(json!({
+            "type": "document",
+            "source": {
+                "type": "base64",
+                "media_type": att.kind.media_type(),
+                "data": BASE64.encode(&bytes),
+            }
+        }));
+    }
+    blocks.push(json!({"type": "text", "text": prompt}));
+    Ok(Value::Array(blocks))
+}
+
 async fn record_usage_best_effort(
     toolkit: &ToolKit,
     model: &str,
@@ -266,7 +295,7 @@ mod tests {
 
         let (_dir, kit) = toolkit().await;
         let result = driver(&server)
-            .run("hi".into(), "be terse".into(), kit.clone(), None, "test")
+            .run("hi".into(), "be terse".into(), kit.clone(), None, "test", &[])
             .await
             .expect("ok");
         assert_eq!(result.text, "hello");
@@ -322,6 +351,7 @@ mod tests {
                 kit.clone(),
                 None,
                 "test",
+                &[],
             )
             .await
             .expect("ok");
@@ -351,7 +381,7 @@ mod tests {
 
         let (_dir, kit) = toolkit().await;
         let err = driver(&server)
-            .run("p".into(), "s".into(), kit, None, "test")
+            .run("p".into(), "s".into(), kit, None, "test", &[])
             .await
             .unwrap_err();
         match err {
@@ -387,7 +417,7 @@ mod tests {
             max_output_tokens: 1024,
         };
         let err = driver(&server)
-            .run("p".into(), "s".into(), kit, Some(budget), "test")
+            .run("p".into(), "s".into(), kit, Some(budget), "test", &[])
             .await
             .unwrap_err();
         assert!(matches!(err, AgentError::LoopExhausted { iterations: 3 }));
@@ -424,11 +454,50 @@ mod tests {
 
         let (_dir, kit) = toolkit().await;
         let result = driver(&server)
-            .run("prompt-text".into(), "s".into(), kit, None, "test")
+            .run("prompt-text".into(), "s".into(), kit, None, "test", &[])
             .await
             .expect("ok");
         assert_eq!(result.text, "oops");
         assert_eq!(result.tool_calls.len(), 1);
         assert!(!result.tool_calls[0].success);
+    }
+
+    #[tokio::test]
+    async fn pdf_attachment_is_sent_as_document_block() {
+        use super::super::{Attachment, AttachmentKind};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .and(body_string_contains("\"type\":\"document\""))
+            .and(body_string_contains("\"media_type\":\"application/pdf\""))
+            .and(body_string_contains(&BASE64.encode(b"%PDF-1.4\nstub")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "content": [{"type": "text", "text": "ok"}],
+                "usage": {"input_tokens": 1, "output_tokens": 1}
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let (dir, kit) = toolkit().await;
+        let pdf = dir.path().join("resume.pdf");
+        std::fs::write(&pdf, b"%PDF-1.4\nstub").unwrap();
+
+        let attachment = Attachment {
+            path: pdf,
+            kind: AttachmentKind::Pdf,
+        };
+        driver(&server)
+            .run(
+                "summarise the attached resume".into(),
+                "sys".into(),
+                kit,
+                None,
+                "test",
+                std::slice::from_ref(&attachment),
+            )
+            .await
+            .expect("ok");
     }
 }

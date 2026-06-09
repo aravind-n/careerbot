@@ -6,7 +6,9 @@
 //! over MCP stdio, the assistant's final text comes back to us as the
 //! `result` field of `--output-format json`.
 
-use super::{AgentDriver, AgentError, AgentResult, Budget, Capabilities, Cost, ToolKit};
+use super::{
+    AgentDriver, AgentError, AgentResult, Attachment, Budget, Capabilities, Cost, ToolKit,
+};
 use crate::tools::ToolError;
 use crate::types::TokenUsage;
 use async_trait::async_trait;
@@ -84,7 +86,11 @@ impl AgentDriver for ClaudeCodeDriver {
         tools: ToolKit,
         _budget: Option<Budget>,
         purpose: &str,
+        attachments: &[Attachment],
     ) -> Result<AgentResult, AgentError> {
+        // Used in the next commit; placeholder here so the trait
+        // signatures match.
+        let _ = attachments;
         let mcp_config = build_mcp_config(&self.careerbot_bin);
         let temp = tempfile::Builder::new()
             .prefix("careerbot-mcp-")
