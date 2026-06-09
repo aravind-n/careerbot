@@ -1,0 +1,42 @@
+# Crates whose duplicate versions are currently pulled in by
+# transitive deps we don't control. Re-audit before adding more —
+# if upstream consolidates, drop the entry so a future regression
+# re-triggers clippy::multiple_crate_versions.
+allowed-duplicate-crates = [
+    # axum/reqwest/sqlx/tokio internals
+    "hashbrown",
+    "winnow",
+
+    # `rand` ecosystem: axum-core pulls 0.8, newer transitive deps pull 0.9
+    "rand",
+    "rand_chacha",
+    "rand_core",
+
+    # `getrandom` is split across three majors via the rand split above
+    "getrandom",
+    "r-efi",
+
+    # Linux: `redox_syscall` is pulled at two versions through tempfile + nix
+    "redox_syscall",
+
+    # `wit-bindgen` ships at two majors via wasi/component deps
+    "wit-bindgen",
+
+    # Windows tier-1 deps: notify-rust/reqwest/tempfile target different
+    # `windows-sys` majors. The cascade brings duplicates of every
+    # per-target shim plus `windows-core`/`-link`/`-result`/`-strings`/
+    # `-targets`. Nothing to do until upstream consolidates.
+    "windows-sys",
+    "windows-targets",
+    "windows-strings",
+    "windows-result",
+    "windows-link",
+    "windows-core",
+    "windows_aarch64_gnullvm",
+    "windows_aarch64_msvc",
+    "windows_i686_gnu",
+    "windows_i686_msvc",
+    "windows_x86_64_gnu",
+    "windows_x86_64_gnullvm",
+    "windows_x86_64_msvc",
+]
