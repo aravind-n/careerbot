@@ -17,6 +17,28 @@ pub mod remove_company;
 use crate::agent::AgentError;
 use crate::runtime::RuntimeError;
 use crate::tools::ToolError;
+use std::path::Path;
+use std::time::SystemTime;
+
+/// Return the mtime of `path` if we can stat it, else `None`. Callers
+/// use this to detect whether the agent touched a file during its run
+/// (snapshot before / compare after) — the `exists()` shortcut treats
+/// any pre-existing artefact as a successful write, which it isn't.
+pub(crate) fn snapshot_mtime(path: &Path) -> Option<SystemTime> {
+    std::fs::metadata(path).ok().and_then(|m| m.modified().ok())
+}
+
+/// True iff `after` indicates the file was written during the window
+/// between the two snapshots — either it appeared (None → Some) or
+/// its mtime advanced. Anything else (disappeared, unchanged, error
+/// in either snapshot) is treated as "did not write".
+pub(crate) fn wrote_during(before: Option<SystemTime>, after: Option<SystemTime>) -> bool {
+    match (before, after) {
+        (None, Some(_)) => true,
+        (Some(b), Some(a)) => a > b,
+        _ => false,
+    }
+}
 
 #[derive(Debug)]
 pub enum CommandError {

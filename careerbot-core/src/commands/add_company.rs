@@ -1,6 +1,6 @@
 //! `careerbot add-company` command.
 
-use super::CommandError;
+use super::{CommandError, snapshot_mtime, wrote_during};
 use crate::agent::{Cost, ToolKit, prompts};
 use crate::runtime::Runtime;
 use crate::tools;
@@ -17,8 +17,14 @@ pub struct AddCompanyOutput {
     /// Job count returned by the verification run when `verified` is true.
     pub initial_jobs: usize,
     /// Error message from the failed verification run when `verified`
-    /// is false. The script is left in place so the user can inspect.
+    /// is false.
     pub verification_error: Option<String>,
+    /// Is there a `scripts/<name>.py` on disk at the end of the run?
+    /// True for the happy path and also for a re-run that left a stale
+    /// script in place when the agent skipped `save_script`. Lets the
+    /// CLI decide whether the "inspect via remove-company" hint is
+    /// honest.
+    pub script_saved: bool,
 }
 
 /// Run the `script_gen` agent for `name` (optionally hinting `url`) and
@@ -44,6 +50,8 @@ pub async fn add_company(
         None => format!("Company: {name}\nNo URL provided — discover one."),
     };
 
+    let script_path = rt.paths.scripts_dir().join(format!("{name}.py"));
+    let before = snapshot_mtime(&script_path);
     let result = driver
         .run(
             prompt,
@@ -57,10 +65,22 @@ pub async fn add_company(
 
     // Save-time verification. The script may already have been run by
     // the agent inside the loop; running it again here is the contract
-    // we enforce regardless of what the agent did.
-    let (verified, initial_jobs, verification_error) = match rt.tools.run_script(name).await {
-        Ok(jobs) => (true, jobs.len(), None),
-        Err(e) => (false, 0, Some(e.to_string())),
+    // we enforce regardless of what the agent did. If the agent never
+    // called `save_script` *this run* — possible when its tool
+    // permission was denied — short-circuit so the user sees the real
+    // cause instead of a confusing "uv: No such file or directory".
+    // The mtime check (not just `exists()`) is what catches the re-run
+    // case where a stale script from an earlier add_company is still
+    // on disk.
+    let after = snapshot_mtime(&script_path);
+    let script_saved = after.is_some();
+    let (verified, initial_jobs, verification_error) = if wrote_during(before, after) {
+        match rt.tools.run_script(name).await {
+            Ok(jobs) => (true, jobs.len(), None),
+            Err(e) => (false, 0, Some(e.to_string())),
+        }
+    } else {
+        (false, 0, Some("agent did not save a script".to_string()))
     };
 
     Ok(AddCompanyOutput {
@@ -70,6 +90,7 @@ pub async fn add_company(
         verified,
         initial_jobs,
         verification_error,
+        script_saved,
     })
 }
 
@@ -167,10 +188,74 @@ mod tests {
         assert!(output.verified, "save-time verification should pass");
         assert_eq!(output.initial_jobs, 0);
         assert!(output.verification_error.is_none());
+        assert!(output.script_saved);
 
         // The script file is on disk.
         let written = std::fs::read_to_string(rt.paths.scripts_dir().join("microsoft.py")).unwrap();
         assert_eq!(written, script_body);
+    }
+
+    #[tokio::test]
+    async fn add_company_reports_when_agent_skips_save_script() {
+        let (_dir, rt, server) = rooted_with_mock().await;
+
+        // Agent loop closes with a text-only response — no save_script call.
+        Mock::given(method("POST"))
+            .and(wpath("/v1/messages"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "content": [{"type": "text", "text": "I would but I can't."}],
+                "usage": {"input_tokens": 50, "output_tokens": 5}
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let out = add_company(&rt, "ghost", None).await.unwrap();
+
+        assert!(!out.verified);
+        assert!(!out.script_saved, "no file on disk for the CLI to point at");
+        assert_eq!(
+            out.verification_error.as_deref(),
+            Some("agent did not save a script")
+        );
+        assert!(!rt.paths.scripts_dir().join("ghost.py").exists());
+    }
+
+    #[tokio::test]
+    async fn add_company_reports_when_only_stale_script_present() {
+        let (_dir, rt, server) = rooted_with_mock().await;
+
+        // Pre-existing script from a prior successful add_company. An
+        // exists() check alone would treat this as the agent's output;
+        // the mtime snapshot is what catches the no-write case.
+        let stale = "print('stale')\n";
+        rt.tools.save_script("microsoft", stale).await.unwrap();
+
+        Mock::given(method("POST"))
+            .and(wpath("/v1/messages"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "content": [{"type": "text", "text": "I'd rather not."}],
+                "usage": {"input_tokens": 50, "output_tokens": 5}
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let out = add_company(&rt, "microsoft", None).await.unwrap();
+
+        assert!(!out.verified, "stale script should not count as verified");
+        assert!(
+            out.script_saved,
+            "the stale script is still on disk for the user to inspect"
+        );
+        assert_eq!(
+            out.verification_error.as_deref(),
+            Some("agent did not save a script")
+        );
+        // The stale script is preserved — we report the failure but
+        // don't blast the user's previous artefact.
+        let kept = std::fs::read_to_string(rt.paths.scripts_dir().join("microsoft.py")).unwrap();
+        assert_eq!(kept, stale);
     }
 
     #[tokio::test]
@@ -207,6 +292,7 @@ mod tests {
 
         assert!(!output.verified, "broken script should fail verification");
         assert!(output.verification_error.is_some());
+        assert!(output.script_saved);
         // The script file is still on disk so the user can inspect it.
         assert!(rt.paths.scripts_dir().join("broken.py").exists());
     }

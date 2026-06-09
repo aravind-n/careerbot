@@ -97,7 +97,7 @@ impl AgentDriver for ClaudeCodeDriver {
         std::fs::write(temp.path(), mcp_config.to_string())
             .map_err(|e| AgentError::Tool(ToolError::Io(e)))?;
 
-        let args = build_claude_args(&prompt, &system, temp.path(), attachments);
+        let args = build_claude_args(&prompt, &system, temp.path(), purpose, attachments);
         let output = Command::new(&self.claude_bin)
             .args(&args)
             .stdout(Stdio::piped())
@@ -160,14 +160,20 @@ impl AgentDriver for ClaudeCodeDriver {
 /// Assemble the argv we hand to `claude`. For each attachment we add
 /// `--add-dir <parent>` so claude's Read tool can open the file; the
 /// caller is expected to have referenced the path inside `prompt`.
+///
+/// `--allowed-tools` is always emitted with a per-purpose CSV. Under
+/// `-p` there is no human to approve tool calls, so any tool not on
+/// this list is silently denied — including every `mcp__careerbot__*`
+/// we expose.
 fn build_claude_args(
     prompt: &str,
     system: &str,
     mcp_config: &Path,
+    purpose: &str,
     attachments: &[Attachment],
 ) -> Vec<std::ffi::OsString> {
     use std::ffi::OsString;
-    let mut args: Vec<OsString> = Vec::with_capacity(8 + attachments.len() * 2);
+    let mut args: Vec<OsString> = Vec::with_capacity(10 + attachments.len() * 2);
     args.push("-p".into());
     args.push(prompt.into());
     args.push("--append-system-prompt".into());
@@ -176,6 +182,8 @@ fn build_claude_args(
     args.push(mcp_config.into());
     args.push("--output-format".into());
     args.push("json".into());
+    args.push("--allowed-tools".into());
+    args.push(allowed_tools_for(purpose).join(",").into());
     for att in attachments {
         if let Some(parent) = att.path.parent() {
             args.push("--add-dir".into());
@@ -183,6 +191,39 @@ fn build_claude_args(
         }
     }
     args
+}
+
+/// Tools each agent purpose is permitted to call. Anything not listed
+/// is denied. An unknown purpose yields an empty slice so the agent
+/// can do nothing rather than something dangerous.
+///
+/// Keep the lists in sync with the system prompts in
+/// [`super::prompts`]; the tests below pin them.
+fn allowed_tools_for(purpose: &str) -> &'static [&'static str] {
+    match purpose {
+        "profile_init" => &[
+            "Read",
+            "mcp__careerbot__read_profile",
+            "mcp__careerbot__write_profile",
+        ],
+        "script_gen" => &[
+            "WebFetch",
+            "WebSearch",
+            "mcp__careerbot__read_profile",
+            "mcp__careerbot__read_filters",
+            "mcp__careerbot__save_script",
+            "mcp__careerbot__run_script",
+            "mcp__careerbot__list_known_jobs",
+            "mcp__careerbot__fetch_url",
+        ],
+        "feedback" => &[
+            "mcp__careerbot__read_profile",
+            "mcp__careerbot__read_filters",
+            "mcp__careerbot__write_profile",
+            "mcp__careerbot__write_filters",
+        ],
+        _ => &[],
+    }
 }
 
 /// Build the MCP config the `claude` subprocess reads. It tells claude
@@ -297,6 +338,14 @@ mod tests {
         assert_eq!(r.result, "oops");
     }
 
+    /// Return the value passed to the first occurrence of `flag` in
+    /// `args`, or `None` if the flag is absent.
+    fn arg_value<'a>(args: &'a [std::ffi::OsString], flag: &str) -> Option<&'a std::ffi::OsStr> {
+        args.iter()
+            .zip(args.iter().skip(1))
+            .find_map(|(f, v)| (f.as_os_str() == flag).then_some(v.as_os_str()))
+    }
+
     #[test]
     fn build_claude_args_adds_one_dir_per_attachment_parent() {
         use super::super::AttachmentKind;
@@ -316,6 +365,7 @@ mod tests {
             "ingest the resume",
             "you are a careerbot agent",
             Path::new("/tmp/mcp.json"),
+            "profile_init",
             &attachments,
         );
 
@@ -347,7 +397,48 @@ mod tests {
 
     #[test]
     fn build_claude_args_emits_no_add_dir_when_no_attachments() {
-        let args = build_claude_args("p", "s", Path::new("/x.json"), &[]);
+        let args = build_claude_args("p", "s", Path::new("/x.json"), "feedback", &[]);
         assert!(!args.iter().any(|a| a == "--add-dir"));
+    }
+
+    #[test]
+    fn build_claude_args_allows_profile_init_tools() {
+        let args = build_claude_args("p", "s", Path::new("/x.json"), "profile_init", &[]);
+        let csv = arg_value(&args, "--allowed-tools").expect("--allowed-tools present");
+        assert_eq!(
+            csv,
+            "Read,mcp__careerbot__read_profile,mcp__careerbot__write_profile"
+        );
+    }
+
+    #[test]
+    fn build_claude_args_allows_script_gen_tools() {
+        let args = build_claude_args("p", "s", Path::new("/x.json"), "script_gen", &[]);
+        let csv = arg_value(&args, "--allowed-tools").expect("--allowed-tools present");
+        assert_eq!(
+            csv,
+            "WebFetch,WebSearch,\
+             mcp__careerbot__read_profile,mcp__careerbot__read_filters,\
+             mcp__careerbot__save_script,mcp__careerbot__run_script,\
+             mcp__careerbot__list_known_jobs,mcp__careerbot__fetch_url"
+        );
+    }
+
+    #[test]
+    fn build_claude_args_allows_feedback_tools() {
+        let args = build_claude_args("p", "s", Path::new("/x.json"), "feedback", &[]);
+        let csv = arg_value(&args, "--allowed-tools").expect("--allowed-tools present");
+        assert_eq!(
+            csv,
+            "mcp__careerbot__read_profile,mcp__careerbot__read_filters,\
+             mcp__careerbot__write_profile,mcp__careerbot__write_filters"
+        );
+    }
+
+    #[test]
+    fn build_claude_args_denies_all_for_unknown_purpose() {
+        let args = build_claude_args("p", "s", Path::new("/x.json"), "bogus", &[]);
+        let csv = arg_value(&args, "--allowed-tools").expect("--allowed-tools present");
+        assert_eq!(csv, "");
     }
 }

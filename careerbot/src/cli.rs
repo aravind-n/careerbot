@@ -314,7 +314,11 @@ async fn handle_add_company(name: String, url: Option<String>) -> ExitCode {
             "verification failed: {}",
             output.verification_error.as_deref().unwrap_or("unknown")
         );
-        eprintln!("(script was saved; inspect or remove via `careerbot remove-company {name}`)");
+        if output.script_saved {
+            eprintln!(
+                "(script was saved; inspect or remove via `careerbot remove-company {name}`)"
+            );
+        }
         ExitCode::FAILURE
     }
 }
@@ -434,7 +438,7 @@ async fn handle_init(force: bool) -> ExitCode {
                             "Saved scripts/{name}.py — {} initial job(s) on first run.",
                             out.initial_jobs
                         );
-                    } else {
+                    } else if out.script_saved {
                         eprintln!(
                             "Script saved but verification failed: {}",
                             out.verification_error.as_deref().unwrap_or("unknown")
@@ -442,6 +446,12 @@ async fn handle_init(force: bool) -> ExitCode {
                         eprintln!(
                             "You can inspect it later with `careerbot remove-company {name}`."
                         );
+                    } else {
+                        eprintln!(
+                            "Collector not saved: {}",
+                            out.verification_error.as_deref().unwrap_or("unknown")
+                        );
+                        eprintln!("Retry later with `careerbot add-company {name}`.");
                     }
                 }
                 Err(e) => {

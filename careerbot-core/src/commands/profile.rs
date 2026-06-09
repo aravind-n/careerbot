@@ -1,7 +1,7 @@
 //! `careerbot profile` command family.
 
-use super::CommandError;
-use crate::agent::{Attachment, AttachmentKind, Cost, ToolKit, prompts};
+use super::{CommandError, snapshot_mtime, wrote_during};
+use crate::agent::{AgentError, Attachment, AttachmentKind, Cost, ToolKit, prompts};
 use crate::runtime::Runtime;
 use crate::tools::ToolError;
 use std::path::{Path, PathBuf};
@@ -75,6 +75,8 @@ pub async fn from_resume(rt: &Runtime, path: &Path) -> Result<FromResumeOutput, 
 
     let driver = rt.build_driver()?;
     let toolkit = ToolKit::in_process(rt.tools.clone());
+    let profile = profile_path(rt);
+    let before = snapshot_mtime(&profile);
     let result = driver
         .run(
             prompt,
@@ -85,6 +87,17 @@ pub async fn from_resume(rt: &Runtime, path: &Path) -> Result<FromResumeOutput, 
             &attachments,
         )
         .await?;
+
+    // The driver can return Ok with a polite acknowledgement even when
+    // it never called write_profile (e.g. tool permission denied under
+    // `claude -p`). A pre-existing profile.md from a prior run would
+    // satisfy an `exists()` check even though this run produced
+    // nothing; the mtime snapshot pins the result to *this* invocation.
+    if !wrote_during(before, snapshot_mtime(&profile)) {
+        return Err(CommandError::Agent(AgentError::InvalidResponse(
+            "agent did not write profile.md".into(),
+        )));
+    }
 
     Ok(FromResumeOutput {
         text: result.text,
@@ -219,6 +232,71 @@ mod tests {
             panic!("expected InvalidInput");
         };
         assert!(matches!(err, CommandError::InvalidInput(_)));
+    }
+
+    #[tokio::test]
+    async fn from_resume_errors_when_agent_skips_write_profile() {
+        let (dir, rt, server) = rooted_with_mock().await;
+
+        // Agent loop closes with a plain text response — no tool calls.
+        Mock::given(method("POST"))
+            .and(wpath("/v1/messages"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "content": [{"type": "text", "text": "OK"}],
+                "usage": {"input_tokens": 50, "output_tokens": 5}
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let resume = dir.path().join("resume.txt");
+        std::fs::write(&resume, "Senior backend engineer, 8 years.").unwrap();
+
+        let Err(err) = from_resume(&rt, &resume).await else {
+            panic!("expected error when agent skipped write_profile");
+        };
+        assert!(
+            matches!(err, CommandError::Agent(AgentError::InvalidResponse(_))),
+            "got {err:?}"
+        );
+        assert!(!profile_path(&rt).exists());
+    }
+
+    #[tokio::test]
+    async fn from_resume_errors_when_stale_profile_is_present() {
+        let (dir, rt, server) = rooted_with_mock().await;
+
+        // Simulate an earlier successful run: profile.md is already on
+        // disk before we start. Its mtime is then snapshotted by the
+        // command; without the snapshot the existence check alone would
+        // declare success.
+        let stale = "# Profile\n\nFrom an earlier resume.";
+        rt.tools.write_profile(stale).await.unwrap();
+
+        Mock::given(method("POST"))
+            .and(wpath("/v1/messages"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "content": [{"type": "text", "text": "OK"}],
+                "usage": {"input_tokens": 50, "output_tokens": 5}
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let resume = dir.path().join("resume.txt");
+        std::fs::write(&resume, "Different resume.").unwrap();
+
+        let Err(err) = from_resume(&rt, &resume).await else {
+            panic!("expected error when agent skipped write_profile despite stale file");
+        };
+        assert!(
+            matches!(err, CommandError::Agent(AgentError::InvalidResponse(_))),
+            "got {err:?}"
+        );
+        // Stale profile is left in place — we report the error, the
+        // user can re-run; we don't blast their previous state.
+        let kept = std::fs::read_to_string(profile_path(&rt)).unwrap();
+        assert_eq!(kept, stale);
     }
 
     #[tokio::test]
