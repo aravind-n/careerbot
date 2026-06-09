@@ -6,6 +6,7 @@ use careerbot_core::config::{self, Config};
 use careerbot_core::daemon;
 use careerbot_core::daemon::ipc_client;
 use careerbot_core::daemon::scheduler;
+use careerbot_core::mcp;
 use careerbot_core::paths::Paths;
 use careerbot_core::runtime::Runtime;
 use clap::{CommandFactory, Parser, Subcommand};
@@ -122,6 +123,7 @@ pub async fn run(cli: Cli) -> ExitCode {
         Command::RunNow { company } => handle_run_now(company).await,
         Command::ListCompanies => handle_list_companies().await,
         Command::RemoveCompany { name } => handle_remove_company(name).await,
+        Command::McpServer => handle_mcp_server().await,
         _ => {
             println!("not implemented yet");
             ExitCode::SUCCESS
@@ -349,6 +351,17 @@ async fn handle_stop_service() -> ExitCode {
             )),
             Err(e) => die(format_args!("{e}")),
         },
+        Err(e) => die(format_args!("{e}")),
+    }
+}
+
+async fn handle_mcp_server() -> ExitCode {
+    let rt = match Runtime::open().await {
+        Ok(r) => Arc::new(r),
+        Err(e) => return die(format_args!("{e}")),
+    };
+    match mcp::run(rt).await {
+        Ok(()) => ExitCode::SUCCESS,
         Err(e) => die(format_args!("{e}")),
     }
 }
