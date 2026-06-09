@@ -508,7 +508,7 @@ fn wizard_prompt_api_key() -> std::io::Result<String> {
 
 fn wizard_prompt_resume_path() -> std::io::Result<PathBuf> {
     eprintln!();
-    eprintln!("[2/3] Path to your resume (text or markdown; PDF not yet supported):");
+    eprintln!("[2/3] Path to your resume (PDF, text, or markdown):");
     let raw = read_line("Resume path: ")?;
     if raw.is_empty() {
         return Err(std::io::Error::new(
