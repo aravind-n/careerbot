@@ -84,13 +84,11 @@ fn default_roots() -> std::io::Result<(PathBuf, PathBuf)> {
         .map(PathBuf::from)
         .ok_or_else(|| std::io::Error::other("HOME not set"))?;
 
-    let data_root = nonempty_var("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home.join(".local/share"));
+    let data_root =
+        nonempty_var("XDG_DATA_HOME").map_or_else(|| home.join(".local/share"), PathBuf::from);
 
-    let state_root = nonempty_var("XDG_STATE_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home.join(".local/state"));
+    let state_root =
+        nonempty_var("XDG_STATE_HOME").map_or_else(|| home.join(".local/state"), PathBuf::from);
 
     Ok((data_root.join("careerbot"), state_root.join("careerbot")))
 }

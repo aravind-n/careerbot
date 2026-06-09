@@ -56,7 +56,7 @@ pub async fn from_resume(rt: &Runtime, path: &Path) -> Result<FromResumeOutput, 
 
     let driver = rt.build_driver()?;
     let toolkit = ToolKit::in_process(rt.tools.clone());
-    let prompt = format!("Resume contents:\n\n{}", resume);
+    let prompt = format!("Resume contents:\n\n{resume}");
     let result = driver
         .run(
             prompt,
@@ -112,9 +112,8 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let paths = Paths::rooted_at(dir.path().join("data"), dir.path().join("state"));
         let rt = Runtime::open_at(paths).await.unwrap();
-        let err = match show(&rt).await {
-            Err(e) => e,
-            Ok(_) => panic!("expected NotFound"),
+        let Err(err) = show(&rt).await else {
+            panic!("expected NotFound");
         };
         assert!(matches!(err, CommandError::NotFound { .. }));
     }
@@ -179,9 +178,8 @@ mod tests {
     #[tokio::test]
     async fn from_resume_reports_missing_file() {
         let (_dir, rt, _server) = rooted_with_mock().await;
-        let err = match from_resume(&rt, Path::new("/does/not/exist.txt")).await {
-            Err(e) => e,
-            Ok(_) => panic!("expected NotFound"),
+        let Err(err) = from_resume(&rt, Path::new("/does/not/exist.txt")).await else {
+            panic!("expected NotFound");
         };
         assert!(matches!(err, CommandError::NotFound { .. }));
     }
@@ -192,13 +190,12 @@ mod tests {
         let resume = dir.path().join("resume.pdf");
         // PDF magic + binary noise — invalid UTF-8.
         std::fs::write(&resume, [0x25, 0x50, 0x44, 0x46, 0xC0, 0xC1, 0xFF, 0xFE]).unwrap();
-        let err = match from_resume(&rt, &resume).await {
-            Err(e) => e,
-            Ok(_) => panic!("expected InvalidInput"),
+        let Err(err) = from_resume(&rt, &resume).await else {
+            panic!("expected InvalidInput");
         };
         match err {
             CommandError::InvalidInput(m) => assert!(m.contains("PDF")),
-            other => panic!("expected InvalidInput, got {:?}", other),
+            other => panic!("expected InvalidInput, got {other:?}"),
         }
     }
 }

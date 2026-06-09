@@ -87,16 +87,16 @@ impl Scheduler {
             let poke = Arc::new(Notify::new());
             pokes.insert(company.clone(), poke.clone());
             let startup_offset = pseudo_jitter(startup_jitter_max);
-            spawn_company_loop(
-                self.runtime.clone(),
-                company.clone(),
-                Duration::from_secs(poll_interval),
-                Duration::from_secs(startup_offset),
+            spawn_company_loop(CompanyLoopCfg {
+                runtime: self.runtime.clone(),
+                company: company.clone(),
+                interval: Duration::from_secs(poll_interval),
+                startup_offset: Duration::from_secs(startup_offset),
                 poke,
-                self.poke_all.clone(),
-                shutdown.clone(),
-                self.channel.clone(),
-            );
+                poke_all: self.poke_all.clone(),
+                shutdown: shutdown.clone(),
+                channel: self.channel.clone(),
+            });
         }
 
         info!(
@@ -111,20 +111,17 @@ impl Scheduler {
     /// `None`). Returns `false` if the company isn't known to the
     /// scheduler.
     pub async fn poke(&self, company: Option<&str>) -> bool {
-        match company {
-            Some(c) => {
-                let guard = self.pokes.lock().await;
-                if let Some(notify) = guard.get(c) {
-                    notify.notify_one();
-                    true
-                } else {
-                    false
-                }
-            }
-            None => {
-                self.poke_all.notify_waiters();
+        if let Some(c) = company {
+            let guard = self.pokes.lock().await;
+            if let Some(notify) = guard.get(c) {
+                notify.notify_one();
                 true
+            } else {
+                false
             }
+        } else {
+            self.poke_all.notify_waiters();
+            true
         }
     }
 
@@ -136,7 +133,7 @@ impl Scheduler {
     }
 }
 
-fn spawn_company_loop(
+struct CompanyLoopCfg {
     runtime: Arc<Runtime>,
     company: String,
     interval: Duration,
@@ -145,19 +142,32 @@ fn spawn_company_loop(
     poke_all: Arc<Notify>,
     shutdown: Arc<Notify>,
     channel: Arc<dyn NotificationChannel>,
-) {
+}
+
+fn spawn_company_loop(loop_cfg: CompanyLoopCfg) {
     tokio::spawn(async move {
+        let CompanyLoopCfg {
+            runtime,
+            company,
+            interval,
+            startup_offset,
+            poke,
+            poke_all,
+            shutdown,
+            channel,
+        } = loop_cfg;
+
         // Apply the per-company startup offset, but bail out early if
         // shutdown fires before the first tick.
         tokio::select! {
-            _ = tokio::time::sleep(startup_offset) => {}
-            _ = shutdown.notified() => return,
+            () = tokio::time::sleep(startup_offset) => {}
+            () = shutdown.notified() => return,
         }
 
         let mut ticker = tokio::time::interval(interval);
         ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
-        // The first `tick().await` resolves immediately — that matches
-        // PLAN.md §8 "first tick after startup runs the script".
+        // The first `tick().await` resolves immediately — first tick
+        // after startup runs the script.
         ticker.tick().await;
 
         loop {
@@ -172,9 +182,9 @@ fn spawn_company_loop(
 
             tokio::select! {
                 _ = ticker.tick() => {}
-                _ = poke.notified() => {}
-                _ = poke_all.notified() => {}
-                _ = shutdown.notified() => break,
+                () = poke.notified() => {}
+                () = poke_all.notified() => {}
+                () = shutdown.notified() => break,
             }
         }
     });
@@ -311,8 +321,7 @@ fn pseudo_jitter(max_seconds: u64) -> u64 {
     }
     SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
-        .map(|d| d.subsec_nanos() as u64 % max_seconds)
-        .unwrap_or(0)
+        .map_or(0, |d| u64::from(d.subsec_nanos()) % max_seconds)
 }
 
 #[cfg(test)]

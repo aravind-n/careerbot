@@ -24,13 +24,13 @@ pub enum ConfigError {
 impl fmt::Display for ConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidKey(k) => write!(f, "invalid config key {:?}", k),
+            Self::InvalidKey(k) => write!(f, "invalid config key {k:?}"),
             Self::NotATable { key } => {
-                write!(f, "cannot descend into {:?}: not a table", key)
+                write!(f, "cannot descend into {key:?}: not a table")
             }
-            Self::Io(e) => write!(f, "{}", e),
-            Self::Parse(e) => write!(f, "{}", e),
-            Self::Serialize(e) => write!(f, "{}", e),
+            Self::Io(e) => write!(f, "{e}"),
+            Self::Parse(e) => write!(f, "{e}"),
+            Self::Serialize(e) => write!(f, "{e}"),
         }
     }
 }
@@ -168,7 +168,7 @@ fn flatten(table: &toml::Table, prefix: &str, out: &mut Vec<(String, toml::Value
         let key = if prefix.is_empty() {
             k.clone()
         } else {
-            format!("{}.{}", prefix, k)
+            format!("{prefix}.{k}")
         };
         match v {
             toml::Value::Table(t) => flatten(t, &key, out),
@@ -181,7 +181,7 @@ fn flatten(table: &toml::Table, prefix: &str, out: &mut Vec<(String, toml::Value
 /// `7724` becomes an integer, `true` a boolean, `["os","email"]` an array);
 /// falls back to a bare string for unquoted identifiers like `claude_code`.
 pub fn parse_value(raw: &str) -> toml::Value {
-    let wrapped = format!("_v = {}", raw);
+    let wrapped = format!("_v = {raw}");
     if let Ok(parsed) = toml::from_str::<toml::Table>(&wrapped)
         && let Some(v) = parsed.get("_v")
     {
@@ -205,8 +205,7 @@ pub fn render_toml_literal(v: &toml::Value) -> String {
     let s = toml::to_string(&t).unwrap_or_default();
     s.trim()
         .strip_prefix("v = ")
-        .map(|x| x.trim_end().to_string())
-        .unwrap_or_else(|| s.trim().to_string())
+        .map_or_else(|| s.trim().to_string(), |x| x.trim_end().to_string())
 }
 
 #[cfg(test)]
@@ -355,7 +354,7 @@ mod tests {
         );
         match parse_value("[\"os\", \"email\"]") {
             toml::Value::Array(arr) => assert_eq!(arr.len(), 2),
-            other => panic!("expected array, got {:?}", other),
+            other => panic!("expected array, got {other:?}"),
         }
     }
 

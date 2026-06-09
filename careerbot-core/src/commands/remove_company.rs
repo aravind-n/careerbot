@@ -73,9 +73,8 @@ mod tests {
     #[tokio::test]
     async fn rejects_unsafe_company_name() {
         let (_dir, rt) = rooted().await;
-        let err = match remove(&rt, "../etc").await {
-            Err(e) => e,
-            Ok(_) => panic!("expected InvalidInput"),
+        let Err(err) = remove(&rt, "../etc").await else {
+            panic!("expected InvalidInput");
         };
         assert!(matches!(err, CommandError::InvalidInput(_)));
     }

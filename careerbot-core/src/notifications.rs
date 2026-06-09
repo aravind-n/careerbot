@@ -30,7 +30,7 @@ pub enum NotificationError {
 impl std::fmt::Display for NotificationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Backend(s) => write!(f, "{}", s),
+            Self::Backend(s) => write!(f, "{s}"),
         }
     }
 }
@@ -46,7 +46,7 @@ pub trait NotificationChannel: Send + Sync {
 }
 
 /// OS-native notification channel via `notify-rust`. Calls the
-/// platform notification API directly (NSUserNotification on macOS,
+/// platform notification API directly (`NSUserNotification` on macOS,
 /// libnotify/dbus on Linux, Toast on Windows).
 pub struct OsChannel;
 

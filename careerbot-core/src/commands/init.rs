@@ -28,14 +28,13 @@ pub fn reset_state(paths: &Paths) -> Result<(), CommandError> {
 }
 
 /// Best-effort detection of the `claude` binary used by the
-/// ClaudeCodeDriver. We don't fail init when it's missing; the
+/// `ClaudeCodeDriver`. We don't fail init when it's missing; the
 /// wizard just doesn't offer it as a choice.
 pub fn claude_on_path() -> bool {
     std::process::Command::new("claude")
         .arg("--version")
         .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+        .is_ok_and(|o| o.status.success())
 }
 
 #[cfg(test)]

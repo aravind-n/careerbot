@@ -9,8 +9,8 @@ use super::ToolKit;
 use crate::types::Filters;
 use serde_json::{Value, json};
 
-/// One tool the agent can call. Schemas are plain serde_json values
-/// because they're consumed by both Anthropic's snake_case
+/// One tool the agent can call. Schemas are plain `serde_json` values
+/// because they're consumed by both Anthropic's `snake_case`
 /// `input_schema` and MCP's camelCase `inputSchema`.
 pub struct ToolSchema {
     pub name: &'static str,
@@ -108,7 +108,7 @@ pub fn all_tools() -> Vec<ToolSchema> {
 }
 
 /// Render the tool list in the format Anthropic's `/v1/messages` expects
-/// (snake_case `input_schema`).
+/// (`snake_case` `input_schema`).
 pub fn to_anthropic_tools(tools: &[ToolSchema]) -> Vec<Value> {
     tools
         .iter()
@@ -157,10 +157,10 @@ pub async fn dispatch_tool(toolkit: &ToolKit, name: &str, input: &Value) -> Resu
         }
         "save_script" => {
             let company = string_field(input, "company")?;
-            let code = string_field(input, "code")?;
-            core.save_script(company, code)
+            let source = string_field(input, "code")?;
+            core.save_script(company, source)
                 .await
-                .map(|_| "saved".to_string())
+                .map(|()| "saved".to_string())
                 .map_err(|e| e.to_string())
         }
         "run_script" => {
@@ -173,7 +173,7 @@ pub async fn dispatch_tool(toolkit: &ToolKit, name: &str, input: &Value) -> Resu
             let content = string_field(input, "content")?;
             core.write_profile(content)
                 .await
-                .map(|_| "written".to_string())
+                .map(|()| "written".to_string())
                 .map_err(|e| e.to_string())
         }
         "read_filters" => {
@@ -185,12 +185,15 @@ pub async fn dispatch_tool(toolkit: &ToolKit, name: &str, input: &Value) -> Resu
                 serde_json::from_value(input.clone()).map_err(|e| e.to_string())?;
             core.write_filters(&filters)
                 .await
-                .map(|_| "written".to_string())
+                .map(|()| "written".to_string())
                 .map_err(|e| e.to_string())
         }
         "list_known_jobs" => {
             let company = string_field(input, "company")?;
-            let limit = input.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
+            let limit = input
+                .get("limit")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(10) as usize;
             let jobs = core
                 .list_known_jobs(company, limit)
                 .await
@@ -205,7 +208,7 @@ fn string_field<'a>(input: &'a Value, key: &str) -> Result<&'a str, String> {
     input
         .get(key)
         .and_then(|v| v.as_str())
-        .ok_or_else(|| format!("missing or non-string field {:?}", key))
+        .ok_or_else(|| format!("missing or non-string field {key:?}"))
 }
 
 #[cfg(test)]

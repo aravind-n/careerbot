@@ -40,11 +40,13 @@ impl AnthropicApiDriver {
         }
     }
 
+    #[must_use]
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.base_url = base_url.into();
         self
     }
 
+    #[must_use]
     pub fn with_model(mut self, model: impl Into<String>) -> Self {
         self.model = model.into();
         self
@@ -357,7 +359,7 @@ mod tests {
                 assert_eq!(status, 500);
                 assert_eq!(body, "boom");
             }
-            other => panic!("expected Api error, got {:?}", other),
+            other => panic!("expected Api error, got {other:?}"),
         }
     }
 

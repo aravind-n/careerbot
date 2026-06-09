@@ -5,7 +5,7 @@
 
 /// `profile_init` — user has handed over a resume; the agent extracts
 /// a structured profile and calls `write_profile`.
-pub const PROFILE_INIT: &str = r#"You are the careerbot profile_init agent. The user has just supplied their resume in the next message. Read it, extract a structured `profile.md`, and save it via the `write_profile` tool. Then respond with one short sentence summarising what you saved.
+pub const PROFILE_INIT: &str = r"You are the careerbot profile_init agent. The user has just supplied their resume in the next message. Read it, extract a structured `profile.md`, and save it via the `write_profile` tool. Then respond with one short sentence summarising what you saved.
 
 The `profile.md` format (see PLAN.md §6):
 
@@ -41,7 +41,7 @@ The `profile.md` format (see PLAN.md §6):
 Rules:
 - Do not embellish. If the resume does not say, leave the inference conservative or omit.
 - The `Preferences` and `Notes` sections are user-editable; populate them with reasonable defaults the user can refine.
-- Do not call any tool other than `write_profile`."#;
+- Do not call any tool other than `write_profile`.";
 
 /// `feedback` — user has supplied free-form feedback about what they
 /// want to see (or not see). The agent reads the current profile and

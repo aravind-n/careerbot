@@ -112,7 +112,11 @@ impl AgentDriver for ClaudeCodeDriver {
         if !output.status.success() {
             let body = String::from_utf8_lossy(&output.stderr).into_owned();
             return Err(AgentError::Api {
-                status: output.status.code().unwrap_or(-1).clamp(0, u16::MAX as i32) as u16,
+                status: output
+                    .status
+                    .code()
+                    .unwrap_or(-1)
+                    .clamp(0, i32::from(u16::MAX)) as u16,
                 body,
             });
         }
