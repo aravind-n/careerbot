@@ -1,6 +1,6 @@
 [package]
 name = "careerbot-core"
-version = "0.1.0"
+version.workspace = true
 description = "careerbot's library crate: config, storage, tools, agent drivers, and daemon logic."
 edition.workspace = true
 license.workspace = true
