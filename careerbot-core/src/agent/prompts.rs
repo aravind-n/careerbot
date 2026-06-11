@@ -7,7 +7,7 @@
 /// a structured profile and calls `write_profile`.
 pub const PROFILE_INIT: &str = r"You are the careerbot profile_init agent. The user has just supplied their resume in the next message. Read it, extract a structured `profile.md`, and save it via the `write_profile` tool. Then respond with one short sentence summarising what you saved.
 
-The `profile.md` format (see PLAN.md §6):
+The `profile.md` format:
 
 ```markdown
 # Profile

@@ -1,4 +1,4 @@
--- Initial schema for careerbot — see PLAN.md §6.
+-- Initial schema for careerbot
 --
 -- `jobs` is the canonical dedup target: (company_tag, external_id) is unique,
 -- and `first_seen_at` drives "new vs. known" decisions in the notification

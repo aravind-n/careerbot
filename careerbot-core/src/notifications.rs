@@ -2,13 +2,39 @@
 //! happened" event and whatever surface (OS notification, email,
 //! webhook…) the user wants to be reached on.
 //!
-//! Phase 5 ships `OsChannel` only; `EmailChannel` and `WebhookChannel`
-//! are listed for later in PLAN.md §9. The trait keeps `OsChannel`'s
-//! OS side-effect mockable: scheduler tests use a `MockChannel` that
-//! records sends to a `Vec` instead of touching the user's
-//! Notification Center.
+//! The trait keeps `OsChannel`'s OS side-effect mockable: scheduler
+//! tests use a `MockChannel` that records sends to a `Vec` instead
+//! of touching the user's Notification Center.
 
 use async_trait::async_trait;
+
+/// Bundle ID we impersonate for macOS Notification Center. CLI
+/// binaries have no bundle of their own, and `mac-notification-sys`
+/// would otherwise fall back to `com.apple.Finder` (which most users
+/// haven't granted notification permission). `com.apple.Terminal` is
+/// the host process for a CLI invocation and is the entry users
+/// expect to find in System Settings → Notifications.
+#[cfg(target_os = "macos")]
+const MACOS_BUNDLE_ID: &str = "com.apple.Terminal";
+
+/// Register the macOS notification bundle ID before the first
+/// `OsChannel::send`. Idempotent: `notify_rust::set_application` uses
+/// a `Once` internally, so callers can invoke this from daemon
+/// startup without worrying about prior calls. No-op on non-macOS.
+pub fn init_os_channel() {
+    #[cfg(target_os = "macos")]
+    match notify_rust::set_application(MACOS_BUNDLE_ID) {
+        Ok(()) => tracing::info!(
+            bundle = MACOS_BUNDLE_ID,
+            "registered macOS notification bundle"
+        ),
+        Err(e) => tracing::warn!(
+            error = %e,
+            bundle = MACOS_BUNDLE_ID,
+            "failed to register macOS notification bundle; OS notifications may be silently dropped"
+        ),
+    }
+}
 
 /// One outbound notification.
 #[derive(Debug, Clone)]
