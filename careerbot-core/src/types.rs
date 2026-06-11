@@ -6,9 +6,6 @@
 use serde::{Deserialize, Serialize};
 
 /// A single job emitted by a per-company script on stdout.
-///
-/// Matches the NDJSON wire format in PLAN.md §7. Optional fields use
-/// `#[serde(default)]` so a script that omits them still parses.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RawJob {
     pub external_id: String,
@@ -32,7 +29,7 @@ pub struct JobSummary {
 }
 
 /// Hard-deny / allow filters applied with zero token cost after each
-/// script run. See PLAN.md §6 for the canonical example.
+/// script run.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Filters {
     #[serde(default)]

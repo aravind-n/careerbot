@@ -1,9 +1,6 @@
 //! Agent loop abstractions. The [`AgentDriver`] trait is the seam between
 //! the deterministic daemon and whatever LLM harness the user has
 //! credentials for; concrete implementations live in submodules.
-//!
-//! See PLAN.md §4 for the trait shape and §5 for the tool layer the
-//! drivers share.
 
 pub mod anthropic_api;
 pub mod claude_code;

@@ -20,8 +20,7 @@ use tokio::time::timeout;
 /// other in-process drivers that build a [`default_http_client`].
 pub const DEFAULT_HTTP_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Default wall-time cap on a single per-company script run.  Matches the
-/// save-time verification limit in PLAN.md §7.
+/// Default wall-time cap on a single per-company script run.
 pub const DEFAULT_SCRIPT_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Build the canonical reqwest client with the default timeout applied.
