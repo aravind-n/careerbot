@@ -49,7 +49,6 @@ jobs:
         platform:
           - { label: linux-x86_64,  runs-on: ubuntu-latest }
           - { label: macos-aarch64, runs-on: macos-latest  }
-          - { label: macos-x86_64,  runs-on: macos-13      }
     runs-on: ${{ matrix.platform.runs-on }}
     steps:
       - name: Checkout
@@ -73,7 +72,6 @@ jobs:
         platform:
           - { label: linux-x86_64,  runs-on: ubuntu-latest }
           - { label: macos-aarch64, runs-on: macos-latest  }
-          - { label: macos-x86_64,  runs-on: macos-13      }
     runs-on: ${{ matrix.platform.runs-on }}
     steps:
       - name: Checkout
