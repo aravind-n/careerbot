@@ -1,0 +1,158 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master # On filter doesn't support dynamic branch tags for default
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+  pull_request:
+    branches:
+      - master
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    name: Lint (fmt + clippy)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+  test:
+    name: Test (${{ matrix.platform.label }})
+    needs: [lint]
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - { label: linux-x86_64,  runs-on: ubuntu-latest }
+          - { label: macos-aarch64, runs-on: macos-latest  }
+          - { label: macos-x86_64,  runs-on: macos-13      }
+    runs-on: ${{ matrix.platform.runs-on }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+
+      - name: cargo test
+        run: cargo test --workspace --locked
+
+  build:
+    name: Build (${{ matrix.platform.label }})
+    needs: [lint]
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - { label: linux-x86_64,  runs-on: ubuntu-latest }
+          - { label: macos-aarch64, runs-on: macos-latest  }
+          - { label: macos-x86_64,  runs-on: macos-13      }
+    runs-on: ${{ matrix.platform.runs-on }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+
+      - name: cargo build (debug, pull request)
+        if: github.event_name == 'pull_request'
+        run: cargo build --workspace --locked
+
+      - name: cargo build --release (push)
+        if: github.event_name != 'pull_request'
+        run: cargo build --workspace --release --locked
+
+      - name: Upload release binary
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: careerbot-${{ matrix.platform.label }}
+          path: target/release/careerbot
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Release
+    needs: [lint, test, build]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag is on the default branch
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DEFAULT_BRANCH" ]; then
+            echo "::error::default branch missing from event payload"
+            exit 1
+          fi
+          git fetch --no-tags origin "$DEFAULT_BRANCH"
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" "origin/$DEFAULT_BRANCH"; then
+            echo "::error::tag $GITHUB_REF_NAME ($GITHUB_SHA) is not on default branch ($DEFAULT_BRANCH); refusing to release"
+            exit 1
+          fi
+          echo "tag $GITHUB_REF_NAME verified on default branch $DEFAULT_BRANCH"
+
+      # Omitting `name:` downloads every artifact uploaded earlier in
+      # this run, each into a subdirectory matching its artifact name
+      # (careerbot-linux-x86_64/, careerbot-macos-aarch64/, ...).
+      - name: Download all release binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Stage release assets
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for dir in artifacts/*/; do
+            artifact=$(basename "$dir")
+            target=${artifact#careerbot-}
+            install -m 0755 "${dir}careerbot" "dist/careerbot-${GITHUB_REF_NAME}-${target}"
+          done
+          ls -l dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/careerbot-*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
