@@ -1,13 +1,13 @@
 //! Background process: HTTP IPC over a Unix domain socket, plus
-//! (in later phases) the per-company scheduler and notification
-//! dispatch. Follows the "new-style daemon" pattern — foreground
-//! process, no fork, no PID file, supervisor-managed lifecycle.
+//! the per-company scheduler and notification dispatch. Follows
+//! the "new-style daemon" pattern — foreground process, no fork,
+//! no PID file, supervisor-managed lifecycle.
 
 pub mod ipc_client;
 pub mod scheduler;
 
 use crate::log::LogBuffer;
-use crate::notifications::OsChannel;
+use crate::notifications::{OsChannel, init_os_channel};
 use crate::runtime::Runtime;
 use crate::shutdown_signal;
 use axum::Json;
@@ -98,6 +98,7 @@ pub async fn run(runtime: Arc<Runtime>, log_buffer: LogBuffer) -> Result<(), Dae
     info!(socket = %socket_path.display(), "daemon listening");
 
     let shutdown = Arc::new(Notify::new());
+    init_os_channel();
     let channel = Arc::new(OsChannel::new());
     let scheduler = Scheduler::new(runtime.clone(), channel);
     scheduler.start_loops(shutdown.clone()).await?;
